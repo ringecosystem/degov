@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -9,6 +9,21 @@ import {
 
 const getSource = (relativePath: string) =>
   readFileSync(new URL(relativePath, import.meta.url), "utf8");
+
+const getMigrationSources = () =>
+  readdirSync(new URL("../prisma/migrations", import.meta.url), {
+    withFileTypes: true,
+  })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) =>
+      readFileSync(
+        new URL(
+          `../prisma/migrations/${entry.name}/migration.sql`,
+          import.meta.url
+        ),
+        "utf8"
+      )
+    );
 
 test("member ranking uses contributor power and ctime as the tie-breaker", () => {
   const rankedMembers = rankMembersByContributorPower(
@@ -117,11 +132,21 @@ test("profile overlays keep contributor power and default missing users to zero"
 });
 
 test("route sources no longer read or write d_user.power in scoped paths", () => {
+  const prismaSchema = getSource("../prisma/schema.prisma");
   const membersRoute = getSource("../src/app/api/degov/members/route.ts");
   const profilePullRoute = getSource("../src/app/api/profile/pull/route.ts");
   const profileRoute = getSource("../src/app/api/profile/[address]/route.ts");
   const loginRoute = getSource("../src/app/api/auth/login/route.ts");
   const syncRoute = getSource("../src/app/api/degov/sync/route.ts");
+  const migrations = getMigrationSources();
+
+  const dUserModel = prismaSchema.match(/model d_user \{[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.doesNotMatch(dUserModel, /\bpower\b/);
+  assert.ok(
+    migrations.some((migration) =>
+      /ALTER TABLE "d_user" DROP COLUMN(?: IF EXISTS)? "power"/.test(migration)
+    )
+  );
 
   assert.match(membersRoute, /inspectContributorsByAddress/);
   assert.doesNotMatch(membersRoute, /u\.power/);
@@ -136,6 +161,6 @@ test("route sources no longer read or write d_user.power in scoped paths", () =>
   assert.doesNotMatch(loginRoute, /"power"/);
   assert.doesNotMatch(loginRoute, /power:/);
 
-  assert.match(syncRoute, /sync\.user\.power/);
+  assert.doesNotMatch(syncRoute, /sync\.user\.power/);
   assert.doesNotMatch(syncRoute, /update d_user set power/i);
 });

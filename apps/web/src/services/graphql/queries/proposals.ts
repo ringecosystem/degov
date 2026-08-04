@@ -34,6 +34,7 @@ export const GET_ALL_PROPOSALS = gql`
       queueExpiresAt
       blockInterval
       clockMode
+      countingMode
       quorum
       decimals
       title

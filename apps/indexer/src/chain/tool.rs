@@ -337,7 +337,7 @@ impl ChainReadPlanBuilder {
             activity_block,
             reason,
             method,
-            BlockReadMode::Safe,
+            BlockReadMode::AtBlock(activity_block),
         );
     }
 
@@ -385,12 +385,41 @@ impl ChainReadPlanBuilder {
         activity_block: u64,
         reason: ChainReadReason,
     ) {
+        self.add_account_balance_refresh_with_block_mode(
+            account,
+            activity_block,
+            reason,
+            BlockReadMode::AtBlock(activity_block),
+        );
+    }
+
+    pub fn add_account_latest_balance_refresh(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+    ) {
+        self.add_account_balance_refresh_with_block_mode(
+            account,
+            activity_block,
+            reason,
+            BlockReadMode::Latest,
+        );
+    }
+
+    fn add_account_balance_refresh_with_block_mode(
+        &mut self,
+        account: &str,
+        activity_block: u64,
+        reason: ChainReadReason,
+        block_mode: BlockReadMode,
+    ) {
         let account = normalize_identifier(account);
         self.add_required_read(ChainReadDraft {
             contract_address: self.contracts.governor_token.clone(),
             method: ChainReadMethod::BalanceOf,
             args: vec![account.clone()],
-            block_mode: BlockReadMode::Safe,
+            block_mode,
             account: Some(account),
             proposal_id: None,
             operation_id: None,

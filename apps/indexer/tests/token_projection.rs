@@ -56,9 +56,24 @@ fn test_project_token_events_preserves_history_mappings_relations_and_reconcile_
     assert_eq!(batch.token_transfers.len(), 2);
     assert_eq!(batch.delegate_rollings.len(), 1);
     assert_eq!(batch.delegate_changed[0].delegator, account("bbbb"));
+    assert_eq!(
+        batch.delegate_changed[0].common.block_timestamp.as_deref(),
+        Some("1700000010000")
+    );
     assert_eq!(batch.delegate_votes_changed[0].delegate, account("cccc"));
+    assert_eq!(
+        batch.delegate_votes_changed[0]
+            .common
+            .block_timestamp
+            .as_deref(),
+        Some("1700000011000")
+    );
     assert_eq!(batch.token_transfers[0].from, account("bbbb"));
     assert_eq!(batch.token_transfers[0].to, account("dddd"));
+    assert_eq!(
+        batch.token_transfers[0].common.block_timestamp.as_deref(),
+        Some("1700000012000")
+    );
 
     let mut repository = InMemoryTokenProjectionRepository::default();
     repository.apply(&batch).expect("write succeeds");

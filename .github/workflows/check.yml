@@ -23,6 +23,7 @@ jobs:
       - name: Check build
         run: |
           pnpm install --filter @degov/web... --frozen-lockfile
+          pnpm run test:web-scripts
           pnpm --filter @degov/web build
 
   check-indexer:

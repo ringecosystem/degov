@@ -412,6 +412,7 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
         &[
             ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
             ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MIN_BLOCKS", Some("25")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS", Some("200")),
             ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS", Some("400")),
             ("DEGOV_INDEXER_ADAPTIVE_CHUNK_FAST_DURATION_MS", Some("250")),
             (
@@ -444,6 +445,7 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
 
             assert_eq!(runtime.adaptive_chunk_sizer.min_chunk_size, 25);
             assert_eq!(runtime.adaptive_chunk_sizer.full_hit_dense_floor, 125);
+            assert_eq!(runtime.adaptive_chunk_sizer.initial_chunk_size, Some(200));
             assert_eq!(runtime.adaptive_chunk_sizer.max_chunk_size, Some(400));
             assert_eq!(
                 runtime.adaptive_chunk_sizer.fast_chunk_duration_threshold,
@@ -465,7 +467,7 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
 
             let capped = runtime.adaptive_chunk_sizer.for_block_range_limit(300);
 
-            assert_eq!(capped.initial_chunk_size, 300);
+            assert_eq!(capped.initial_chunk_size, 200);
             assert_eq!(capped.max_chunk_size, 300);
             assert_eq!(capped.min_chunk_size, 25);
             assert_eq!(capped.full_hit_dense_floor, 125);
@@ -476,6 +478,65 @@ fn test_indexer_runtime_loads_adaptive_chunk_sizer_env_and_caps_to_block_range_l
             assert_eq!(capped.stable_chunks_to_grow, 3);
             assert_eq!(capped.unstable_chunks_to_shrink, 4);
             assert_eq!(capped.shrink_factor_percent, 75);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_unset_initial_chunk_preserves_max_as_initial() {
+    with_datalens_env(
+        &[
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS", None),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS", Some("400")),
+        ],
+        || {
+            let runtime = IndexerRuntimeConfig::from_env().expect("load runtime config");
+
+            assert_eq!(runtime.adaptive_chunk_sizer.initial_chunk_size, None);
+
+            let capped = runtime.adaptive_chunk_sizer.for_block_range_limit(300);
+
+            assert_eq!(capped.initial_chunk_size, 300);
+            assert_eq!(capped.max_chunk_size, 300);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_caps_initial_chunk_to_block_range_limit() {
+    with_datalens_env(
+        &[
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS", Some("500")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS", Some("800")),
+        ],
+        || {
+            let runtime = IndexerRuntimeConfig::from_env().expect("load runtime config");
+            let capped = runtime.adaptive_chunk_sizer.for_block_range_limit(300);
+
+            assert_eq!(capped.initial_chunk_size, 300);
+            assert_eq!(capped.max_chunk_size, 300);
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_rejects_initial_chunk_above_max_chunk_size() {
+    with_datalens_env(
+        &[
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS", Some("500")),
+            ("DEGOV_INDEXER_ADAPTIVE_CHUNK_MAX_BLOCKS", Some("400")),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("reject initial above max");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_ADAPTIVE_CHUNK_INITIAL_BLOCKS")
+            );
         },
     );
 }

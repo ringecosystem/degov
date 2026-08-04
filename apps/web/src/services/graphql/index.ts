@@ -519,19 +519,12 @@ export const delegateService = {
   },
 };
 
-type IndexerStatusQueryVariant =
-  | "latestProcessedHeight"
-  | "provisionalHeight"
-  | "base";
+type IndexerStatusQueryVariant = "provisionalHeight" | "base";
 
 const indexerStatusQueryVariants: Array<{
   key: IndexerStatusQueryVariant;
   query: string;
 }> = [
-  {
-    key: "latestProcessedHeight",
-    query: Queries.GET_INDEXER_STATUS_WITH_LATEST_PROCESSED_HEIGHT,
-  },
   {
     key: "provisionalHeight",
     query: Queries.GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT,
@@ -549,10 +542,7 @@ const indexerStatusQueryVariantByEndpoint = new Map<
 
 const isUnsupportedIndexerStatusFieldError = (error: unknown) => {
   if (!(error instanceof Error)) return false;
-  return (
-    error.message.includes("latestProcessedHeight") ||
-    error.message.includes("provisionalHeight")
-  );
+  return error.message.includes("provisionalHeight");
 };
 
 const fetchIndexerStatusWithQuery = async (endpoint: string, query: string) => {

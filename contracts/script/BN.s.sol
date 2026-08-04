@@ -8,9 +8,9 @@ import {Timelock} from "../src/Timelock.sol";
 
 contract BlocknumberCase {
     address deployer = 0x0f14341A7f464320319025540E8Fe48Ad0fe5aec;
-    address GTK = 0xB81A00CAa77CD98C3c6a7dc6E1e5393656650773;
-    address TL = 0x4891332494a67AB7C446dBfb1C08b8125cDA4229;
-    address DGVN = 0x398d514611291aB0C1c7c8447589A15b4bD08E3D;
+    address GTK = 0xef8ef3A1705f42e7FC1e06809940ec5942F5bB98;
+    address TL = 0xa7E9dC6aBe0EfcdaBB8ED0471De0c56013066c20;
+    address DGVN = 0x449337BBe404CaE0bA82f3451661AF7481f37aaC;
 
     address bear = 0x3E8436e87Abb49efe1A958EE73fbB7A12B419aAB;
     address yalin = 0x9e0DE805Efd55178B5469c119d5DE75C89582AEe;

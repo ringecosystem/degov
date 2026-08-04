@@ -2,11 +2,12 @@ use degov_datalens_indexer::{
     BatchReadPlanConfig, CallExecutedEvent, CallSaltEvent, CallScheduledEvent, ChainContracts,
     ChainReadExecutionReport, ChainReadKey, ChainReadMethod, ChainReadResult, ChainReadValue,
     DecodedGovernorEvent, DecodedTimelockEvent, GovernanceTokenStandard, NormalizedEvmLog,
-    ParameterChangeEvent, ProposalCreatedEvent, ProposalProjectionContext, ProposalProjectionEvent,
-    ProposalQueuedEvent, ReadRequirement, RoleAccountEvent, RoleAdminChangedEvent,
-    TimelockOperationIdEvent, TimelockProjectionContext, TimelockProjectionError,
-    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
-    project_proposal_events, project_timelock_events, project_timelock_events_with_proposal_links,
+    ParameterChangeEvent, ProposalCreatedEvent, ProposalIdEvent, ProposalProjectionContext,
+    ProposalProjectionEvent, ProposalQueuedEvent, ReadRequirement, RoleAccountEvent,
+    RoleAdminChangedEvent, TimelockOperationIdEvent, TimelockProjectionContext,
+    TimelockProjectionError, TimelockProjectionEvent, TimelockProjectionRepository,
+    TimelockProposalLinkContext, project_proposal_events, project_timelock_events,
+    project_timelock_events_with_proposal_links, project_timelock_proposal_links,
 };
 use serde_json::json;
 use sha3::{Digest, Keccak256};
@@ -390,6 +391,93 @@ fn test_project_timelock_links_scheduled_calls_to_known_proposal_actions() {
 }
 
 #[test]
+fn test_project_timelock_proposal_links_materializes_governor_timelock_control_rows() {
+    let proposal_batch = project_proposal_events(
+        &proposal_context(),
+        vec![
+            ProposalProjectionEvent {
+                log: proposal_log(8, 0, 0),
+                event: DecodedGovernorEvent::ProposalCreated(ProposalCreatedEvent {
+                    proposal_id: "42".to_owned(),
+                    proposer: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_owned(),
+                    targets: vec!["0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_owned()],
+                    values: vec!["100".to_owned()],
+                    signatures: vec!["".to_owned()],
+                    calldatas: vec!["0x1234".to_owned()],
+                    vote_start: "20".to_owned(),
+                    vote_end: "40".to_owned(),
+                    description: "Proposal title".to_owned(),
+                }),
+            },
+            ProposalProjectionEvent {
+                log: proposal_log(10, 0, 0),
+                event: DecodedGovernorEvent::ProposalQueued(ProposalQueuedEvent {
+                    proposal_id: "42".to_owned(),
+                    eta_seconds: "1700003600".to_owned(),
+                }),
+            },
+            ProposalProjectionEvent {
+                log: proposal_log(11, 0, 0),
+                event: DecodedGovernorEvent::ProposalExecuted(ProposalIdEvent {
+                    proposal_id: "42".to_owned(),
+                }),
+            },
+        ],
+    )
+    .expect("proposal projection succeeds");
+    let links = TimelockProposalLinkContext::from_proposal_batch(&proposal_batch);
+
+    let batch = project_timelock_proposal_links(&context(), &links)
+        .expect("timelock proposal link projection succeeds");
+
+    assert_eq!(batch.event_order, Vec::<String>::new());
+    assert_eq!(batch.timelock_operations.len(), 1);
+    assert_eq!(batch.timelock_calls.len(), 1);
+    assert_eq!(batch.timelock_operation_hints.len(), 0);
+    assert_eq!(batch.chain_read_plan.reads.len(), 0);
+
+    let operation = &batch.timelock_operations[0];
+    let expected_proposal_ref = proposal_ref("42");
+    assert_eq!(operation.operation_id, bytes32_uint(42));
+    assert_eq!(operation.timelock_type, "GovernorTimelockControl");
+    assert_eq!(operation.state, "Done");
+    assert_eq!(
+        operation.proposal_ref.as_deref(),
+        Some(expected_proposal_ref)
+    );
+    assert_eq!(
+        operation.proposal_id.as_deref(),
+        Some(expected_proposal_ref)
+    );
+    assert_eq!(operation.call_count, Some(1));
+    assert_eq!(operation.executed_call_count, Some(1));
+    assert_eq!(operation.delay_seconds, None);
+    assert_eq!(operation.ready_at.as_deref(), Some("1700003600"));
+    assert_eq!(operation.queued_block_number.as_deref(), Some("10"));
+    assert_eq!(
+        operation.executed_transaction_hash.as_deref(),
+        Some("0xtx11")
+    );
+
+    let call = &batch.timelock_calls[0];
+    assert_eq!(call.operation_ref, operation.id);
+    assert_eq!(call.operation_id, operation.operation_id);
+    assert_eq!(call.action_index, 0);
+    assert_eq!(call.target, "0xcccccccccccccccccccccccccccccccccccccccc");
+    assert_eq!(call.value, "100");
+    assert_eq!(call.data, "0x1234");
+    assert_eq!(call.state, "Done");
+    assert_eq!(call.proposal_ref.as_deref(), Some(expected_proposal_ref));
+    assert_eq!(
+        call.proposal_action_id.as_deref(),
+        Some(format!("{expected_proposal_ref}:action:0").as_str())
+    );
+    assert_eq!(call.scheduled_block_number.as_deref(), Some("10"));
+    assert_eq!(call.scheduled_transaction_hash.as_deref(), Some("0xtx10"));
+    assert_eq!(call.executed_transaction_hash.as_deref(), Some("0xtx11"));
+}
+
+#[test]
 fn test_project_timelock_repository_merges_incremental_operation_and_call_state() {
     let mut repository = degov_datalens_indexer::InMemoryTimelockProjectionRepository::default();
     let scheduled_batch = project_timelock_events(
@@ -699,6 +787,10 @@ fn predecessor_id() -> String {
 
 fn salt_id() -> String {
     "0x1111111111111111111111111111111111111111111111111111111111111111".to_owned()
+}
+
+fn bytes32_uint(value: u64) -> String {
+    format!("0x{value:064x}")
 }
 
 fn proposer_role() -> String {

@@ -4,7 +4,7 @@ use degov_datalens_indexer::{
 };
 
 #[test]
-fn test_read_plan_dedupes_repeated_account_power_reads_in_large_datalens_batch() {
+fn test_read_plan_keeps_historical_account_power_reads_block_specific() {
     let contracts = contracts();
     let mut builder =
         ChainReadPlanBuilder::new(1, contracts.clone(), BatchReadPlanConfig::default());
@@ -20,8 +20,8 @@ fn test_read_plan_dedupes_repeated_account_power_reads_in_large_datalens_batch()
     let plan = builder.build();
 
     assert_eq!(plan.metrics.requested_reads, 10_000);
-    assert_eq!(plan.metrics.deduped_reads, 9_999);
-    assert_eq!(plan.reads.len(), 1);
+    assert_eq!(plan.metrics.deduped_reads, 0);
+    assert_eq!(plan.reads.len(), 10_000);
     assert_eq!(plan.reads[0].key.chain_id, 1);
     assert_eq!(plan.reads[0].key.contract_address, contracts.governor_token);
     assert_eq!(plan.reads[0].key.method, ChainReadMethod::GetVotes);
@@ -29,7 +29,7 @@ fn test_read_plan_dedupes_repeated_account_power_reads_in_large_datalens_batch()
         plan.reads[0].key.args,
         vec!["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
     );
-    assert_eq!(plan.reads[0].key.block_mode, BlockReadMode::Safe);
+    assert_eq!(plan.reads[0].key.block_mode, BlockReadMode::AtBlock(10_000));
     assert_eq!(
         plan.reads[0].metadata.accounts,
         ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()].into()
@@ -39,11 +39,16 @@ fn test_read_plan_dedupes_repeated_account_power_reads_in_large_datalens_batch()
         [ChainReadReason::TokenActivityPowerRefresh].into()
     );
     assert_eq!(plan.reads[0].requirement, ReadRequirement::Required);
-    assert_eq!(plan.reads[0].activity_blocks.len(), 10_000);
+    assert_eq!(plan.reads[0].activity_blocks, vec![10_000]);
+    assert_eq!(
+        plan.reads[9_999].key.block_mode,
+        BlockReadMode::AtBlock(19_999)
+    );
+    assert_eq!(plan.reads[9_999].activity_blocks, vec![19_999]);
 }
 
 #[test]
-fn test_read_plan_dedupes_same_rpc_read_across_semantic_metadata() {
+fn test_read_plan_keeps_historical_reads_distinct_from_other_block_modes() {
     let contracts = contracts();
     let mut builder =
         ChainReadPlanBuilder::new(1, contracts.clone(), BatchReadPlanConfig::default());
@@ -68,23 +73,46 @@ fn test_read_plan_dedupes_same_rpc_read_across_semantic_metadata() {
     let plan = builder.build();
 
     assert_eq!(plan.metrics.requested_reads, 3);
-    assert_eq!(plan.metrics.deduped_reads, 2);
-    assert_eq!(plan.reads.len(), 1);
-    assert_eq!(plan.reads[0].requirement, ReadRequirement::Required);
-    assert_eq!(plan.reads[0].activity_blocks, vec![100, 101]);
+    assert_eq!(plan.metrics.deduped_reads, 0);
+    assert_eq!(plan.reads.len(), 3);
+    let token_activity_read = plan
+        .reads
+        .iter()
+        .find(|read| {
+            read.key.block_mode == BlockReadMode::AtBlock(100)
+                && read
+                    .metadata
+                    .reasons
+                    .contains(&ChainReadReason::TokenActivityPowerRefresh)
+        })
+        .expect("token activity read");
+    assert_eq!(token_activity_read.requirement, ReadRequirement::Required);
+    assert_eq!(token_activity_read.activity_blocks, vec![100]);
     assert_eq!(
-        plan.reads[0].metadata.accounts,
+        token_activity_read.metadata.accounts,
         ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()].into()
     );
-    assert_eq!(
-        plan.reads[0].metadata.reasons,
-        [
-            ChainReadReason::OptionalEnrichment,
-            ChainReadReason::ProposalSnapshotPower,
-            ChainReadReason::TokenActivityPowerRefresh,
-        ]
-        .into()
-    );
+    assert!(plan.reads.iter().any(|read| {
+        read.key.block_mode == BlockReadMode::AtBlock(100)
+            && read
+                .metadata
+                .reasons
+                .contains(&ChainReadReason::TokenActivityPowerRefresh)
+    }));
+    assert!(plan.reads.iter().any(|read| {
+        read.key.block_mode == BlockReadMode::AtBlock(101)
+            && read
+                .metadata
+                .reasons
+                .contains(&ChainReadReason::ProposalSnapshotPower)
+    }));
+    assert!(plan.reads.iter().any(|read| {
+        read.key.block_mode == BlockReadMode::Safe
+            && read
+                .metadata
+                .reasons
+                .contains(&ChainReadReason::OptionalEnrichment)
+    }));
 }
 
 #[test]
@@ -113,8 +141,8 @@ fn test_read_plan_dedupes_repeated_account_proposal_and_operation_activity() {
     let plan = builder.build();
 
     assert_eq!(plan.metrics.requested_reads, 50_000);
-    assert_eq!(plan.metrics.deduped_reads, 49_995);
-    assert_eq!(plan.reads.len(), 5);
+    assert_eq!(plan.metrics.deduped_reads, 39_996);
+    assert_eq!(plan.reads.len(), 10_004);
     assert_eq!(
         plan.reads
             .iter()
@@ -123,7 +151,7 @@ fn test_read_plan_dedupes_repeated_account_proposal_and_operation_activity() {
                 .accounts
                 .contains("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
             .count(),
-        1
+        10_000
     );
     assert_eq!(
         plan.reads
@@ -180,7 +208,7 @@ fn test_read_plan_keeps_distinct_power_reads_when_block_semantics_differ() {
     assert_eq!(keys.len(), 3);
     assert!(keys.contains(&(
         &ChainReadMethod::GetVotes,
-        &BlockReadMode::Safe,
+        &BlockReadMode::AtBlock(100),
         &[ChainReadReason::TokenActivityPowerRefresh].into(),
     )));
     assert!(keys.contains(&(

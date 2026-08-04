@@ -13,7 +13,7 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 contract DGovernor is Governor, GovernorSettings, GovernorCountingSimple, GovernorVotes, GovernorTimelockControl {
     constructor(IVotes _token, TimelockController _timelock)
         Governor("DGorvernor")
-        GovernorSettings(1 minutes, 15 minutes, 1e18)
+        GovernorSettings(1 minutes, 15 minutes, 10e18)
         GovernorVotes(_token)
         GovernorTimelockControl(_timelock)
     {}
@@ -29,7 +29,7 @@ contract DGovernor is Governor, GovernorSettings, GovernorCountingSimple, Govern
     }
 
     function quorum(uint256) public pure override returns (uint256) {
-        return 1e18;
+        return 10e18;
     }
 
     function state(uint256 proposalId)

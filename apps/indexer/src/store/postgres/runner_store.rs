@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fmt,
     future::Future,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -7,21 +7,26 @@ use std::{
 
 use sqlx::{PgPool, Postgres, QueryBuilder, Row, Transaction};
 
+use crate::delegate_profile::{ZERO_DELEGATE_ADDRESS, acquire_delegate_profile_scope_lock};
+
 use crate::{
-    CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite,
+    AdaptiveChunkSizingDecision, CheckpointRepository, ContributorVoteSignalWrite, DataMetricWrite,
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, DecodedTimelockEvent,
-    DelegateChangedWrite, DelegateRollingWrite, DelegateVotesChangedWrite, GovernanceTokenStandard,
-    IndexerCheckpoint, IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunnerStore,
-    IndexerRunnerTransaction, PowerReconcileCandidate, ProposalActionWrite, ProposalCreatedWrite,
-    ProposalDeadlineExtensionWrite, ProposalExtendedWrite, ProposalIdWrite,
-    ProposalProjectionBatch, ProposalQueuedWrite, ProposalStateEpochWrite,
-    ProposalTimestampBackfillCandidate, ProposalTimestampBackfillUpdate, ProposalVoteTotalWrite,
-    ProposalWrite, ProvisionalCleanupReport, ProvisionalCleanupStore,
+    DelegateChangedWrite, DelegateRollingWrite, DelegateVotesChangedWrite,
+    GovernanceParameterCheckpointWrite, GovernanceTokenStandard, GovernorParameterChangeWrite,
+    GovernorTimelockChangeWrite, IndexerCheckpoint, IndexerCheckpointIdentity,
+    IndexerProjectionBatch, IndexerRunnerStore, IndexerRunnerTransaction, PowerReconcileCandidate,
+    ProposalActionWrite, ProposalCreatedWrite, ProposalDeadlineExtensionWrite,
+    ProposalExtendedWrite, ProposalIdWrite, ProposalProjectionBatch, ProposalQueuedWrite,
+    ProposalStateEpochWrite, ProposalTimestampBackfillCandidate, ProposalTimestampBackfillUpdate,
+    ProposalVoteTotalWrite, ProposalWrite, ProvisionalCleanupReport, ProvisionalCleanupStore,
     ProvisionalContributorPowerOverlayWrite, ProvisionalDelegatePowerOverlayRelation,
     ProvisionalDelegatePowerOverlayWrite, ProvisionalPowerOverlayScope,
-    ProvisionalPowerOverlayStore, ProvisionalProposalOverlayStore, ProvisionalProposalOverlayWrite,
-    ProvisionalRollbackReport, ProvisionalRollbackScope, ProvisionalSegmentCleanupCandidate,
-    ProvisionalSegmentCleanupDecision, ProvisionalTimelockOperationOverlayWrite, TimelockCallWrite,
+    ProvisionalPowerOverlayStore, ProvisionalProposalEventOverlayWrite,
+    ProvisionalProposalOverlayStore, ProvisionalProposalOverlayWrite, ProvisionalRollbackReport,
+    ProvisionalRollbackScope, ProvisionalSegmentCleanupCandidate,
+    ProvisionalSegmentCleanupDecision, ProvisionalTimelockOperationOverlayWrite,
+    ProvisionalVoteCastGroupOverlayWrite, ProvisionalVoteOverlayStore, TimelockCallWrite,
     TimelockMinDelayChangeWrite, TimelockOperationHintWrite, TimelockOperationWrite,
     TimelockProjectionBatch, TimelockProjectionContext, TimelockProjectionEvent,
     TimelockProposalActionLink, TimelockProposalLinkContext, TimelockRoleEventWrite,
@@ -183,6 +188,24 @@ impl IndexerRunnerTransaction for PostgresIndexerRunnerTransaction<'_> {
         .map_err(PostgresIndexerRunnerStoreError::from)
     }
 
+    fn update_adaptive_chunk_state(
+        &mut self,
+        identity: &IndexerCheckpointIdentity,
+        adaptive_sizing_decision: &AdaptiveChunkSizingDecision,
+    ) -> Result<(), Self::Error> {
+        let transaction = self
+            .transaction
+            .as_mut()
+            .ok_or_else(|| PostgresIndexerRunnerStoreError::new("transaction is closed"))?;
+
+        block_on_runtime(self.checkpoint_repository.update_adaptive_chunk_state(
+            transaction,
+            identity,
+            adaptive_sizing_decision,
+        ))
+        .map_err(PostgresIndexerRunnerStoreError::from)
+    }
+
     fn commit(mut self) -> Result<(), Self::Error> {
         let transaction = self
             .transaction
@@ -248,6 +271,11 @@ async fn write_projection_batch(
     onchain_refresh_debounce: Duration,
     onchain_refresh_deferred_drain_batch_size: usize,
 ) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let delegate_profile_scopes = delegate_profile_scopes(batch);
+    for (chain_id, dao_code, governor_address) in &delegate_profile_scopes {
+        acquire_delegate_profile_scope_lock(transaction, *chain_id, dao_code, governor_address)
+            .await?;
+    }
     if let Some(proposal) = &batch.proposal {
         write_proposal_batch_rows(transaction, proposal).await?;
     }
@@ -255,7 +283,9 @@ async fn write_projection_batch(
         write_vote_batch_rows(transaction, vote).await?;
     }
     let inserted_operation_ids = if let Some(token) = &batch.token {
-        write_token_batch_rows(transaction, token).await?
+        let inserted_operation_ids = write_token_batch_rows(transaction, token).await?;
+        insert_delegate_profiles(transaction, token, &inserted_operation_ids).await?;
+        inserted_operation_ids
     } else {
         Vec::new()
     };
@@ -273,6 +303,7 @@ async fn write_projection_batch(
     if let Some(vote) = &batch.vote {
         refresh_vote_data_metric(transaction, &vote.contributor_vote_signals).await?;
     }
+    synchronize_delegate_profile_metrics(transaction, &delegate_profile_scopes).await?;
     if let Some(token) = &batch.token {
         upsert_onchain_refresh_tasks(
             transaction,

@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use ethabi::ethereum_types::U256;
+
 use crate::{
     BatchReadPlanConfig, CallExecutedEvent, CallScheduledEvent, ChainContracts,
     ChainReadExecutionReport, ChainReadMethod, ChainReadPlan, ChainReadPlanBuilder,
@@ -39,7 +41,13 @@ pub struct TimelockProposalActionLink {
     pub proposal_ref: String,
     pub raw_proposal_id: String,
     pub queue_transaction_hash: String,
+    pub queue_block_number: Option<String>,
+    pub queue_block_timestamp: Option<String>,
+    pub queue_log_index: u64,
+    pub queue_transaction_index: u64,
     pub execution_transaction_hash: Option<String>,
+    pub execution_block_number: Option<String>,
+    pub execution_block_timestamp: Option<String>,
     pub queue_eta: Option<String>,
     pub proposal_action_id: String,
     pub proposal_action_index: usize,
@@ -61,7 +69,14 @@ struct TimelockProposalActionKey {
 
 impl TimelockProposalLinkContext {
     pub fn from_proposal_batch(batch: &ProposalProjectionBatch) -> Self {
-        Self::from_proposal_rows(batch.proposals.iter(), batch.proposal_actions.iter())
+        let mut links =
+            Self::from_proposal_rows(batch.proposals.iter(), batch.proposal_actions.iter());
+        links.extend(Self::from_queued_proposal_rows(
+            batch.proposal_queued.iter(),
+            batch.proposals.iter(),
+            batch.proposal_actions.iter(),
+        ));
+        links
     }
 
     pub fn from_proposal_rows<'a>(
@@ -87,10 +102,16 @@ impl TimelockProposalLinkContext {
                 proposal_ref: action.proposal_ref.clone(),
                 raw_proposal_id: proposal.proposal_id.clone(),
                 queue_transaction_hash: normalize_identifier(queue_transaction_hash),
+                queue_block_number: proposal.queued_block_number.clone(),
+                queue_block_timestamp: proposal.queued_block_timestamp.clone(),
+                queue_log_index: proposal.log_index,
+                queue_transaction_index: proposal.transaction_index,
                 execution_transaction_hash: proposal
                     .executed_transaction_hash
                     .as_deref()
                     .map(normalize_identifier),
+                execution_block_number: proposal.executed_block_number.clone(),
+                execution_block_timestamp: proposal.executed_block_timestamp.clone(),
                 queue_eta: proposal.proposal_eta.clone(),
                 proposal_action_id: action.id.clone(),
                 proposal_action_index: action.action_index,
@@ -151,10 +172,16 @@ impl TimelockProposalLinkContext {
                     proposal_ref: action.proposal_ref.clone(),
                     raw_proposal_id: proposal.proposal_id.clone(),
                     queue_transaction_hash: normalize_identifier(&queued.common.transaction_hash),
+                    queue_block_number: Some(queued.common.block_number.clone()),
+                    queue_block_timestamp: queued.common.block_timestamp.clone(),
+                    queue_log_index: queued.common.log_index,
+                    queue_transaction_index: queued.common.transaction_index,
                     execution_transaction_hash: proposal
                         .executed_transaction_hash
                         .as_deref()
                         .map(normalize_identifier),
+                    execution_block_number: proposal.executed_block_number.clone(),
+                    execution_block_timestamp: proposal.executed_block_timestamp.clone(),
                     queue_eta: Some(queued.eta_seconds.clone()),
                     proposal_action_id: action.id.clone(),
                     proposal_action_index: action.action_index,
@@ -168,9 +195,17 @@ impl TimelockProposalLinkContext {
         context
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.proposal_actions.is_empty()
+    }
+
     pub fn insert_action_link(&mut self, link: TimelockProposalActionLink) {
-        self.action_lookup
-            .insert(link.key(), self.proposal_actions.len());
+        let key = link.key();
+        if let Some(index) = self.action_lookup.get(&key).copied() {
+            self.proposal_actions[index] = link;
+            return;
+        }
+        self.action_lookup.insert(key, self.proposal_actions.len());
         self.proposal_actions.push(link);
     }
 
@@ -517,6 +552,55 @@ pub fn project_timelock_events(
     )
 }
 
+pub fn project_timelock_proposal_links(
+    context: &TimelockProjectionContext,
+    proposal_links: &TimelockProposalLinkContext,
+) -> Result<TimelockProjectionBatch, TimelockProjectionError> {
+    let governor_address = normalize_identifier(&context.governor_address);
+    let timelock_address = normalize_identifier(&context.timelock_address);
+    let chain_id = proposal_links
+        .proposal_actions
+        .first()
+        .map(|link| link.chain_id)
+        .unwrap_or_default();
+    let builder = ChainReadPlanBuilder::new(
+        chain_id,
+        context.contracts.clone(),
+        context.read_plan_config,
+    );
+    let mut operations = BTreeMap::new();
+    let mut calls = BTreeMap::new();
+
+    for proposal_link in &proposal_links.proposal_actions {
+        let common =
+            proposal_link_common(context, &governor_address, &timelock_address, proposal_link);
+        let operation_id = proposal_link_operation_id(proposal_link);
+        let operation =
+            governor_timelock_control_operation_write(&common, &operation_id, proposal_link);
+        operations
+            .entry(operation.id.clone())
+            .and_modify(|stored: &mut TimelockOperationWrite| stored.merge(&operation))
+            .or_insert(operation);
+
+        let operation_ref = operation_ref(&common, &operation_id);
+        let call = governor_timelock_control_call_write(&common, &operation_ref, proposal_link);
+        calls
+            .entry(call.id.clone())
+            .and_modify(|stored: &mut TimelockCallWrite| stored.merge(&call))
+            .or_insert(call);
+    }
+
+    Ok(TimelockProjectionBatch {
+        event_order: Vec::new(),
+        timelock_operations: operations.into_values().collect(),
+        timelock_calls: calls.into_values().collect(),
+        timelock_role_events: Vec::new(),
+        timelock_min_delay_changes: Vec::new(),
+        timelock_operation_hints: Vec::new(),
+        chain_read_plan: builder.build(),
+    })
+}
+
 pub fn project_timelock_events_with_proposal_links(
     context: &TimelockProjectionContext,
     proposal_links: &TimelockProposalLinkContext,
@@ -673,6 +757,110 @@ fn common(
             .map(|timestamp| (timestamp / 1_000).to_string()),
         transaction_hash: normalize_identifier(&log.transaction_hash),
     }
+}
+
+fn proposal_link_common(
+    context: &TimelockProjectionContext,
+    governor_address: &str,
+    timelock_address: &str,
+    proposal_link: &TimelockProposalActionLink,
+) -> TimelockEventCommon {
+    TimelockEventCommon {
+        contract_set_id: context.contract_set_id.clone(),
+        chain_id: proposal_link.chain_id,
+        dao_code: context.dao_code.clone(),
+        governor_address: governor_address.to_owned(),
+        timelock_address: timelock_address.to_owned(),
+        contract_address: proposal_link.governor_address.clone(),
+        log_index: proposal_link.queue_log_index,
+        transaction_index: proposal_link.queue_transaction_index,
+        block_number: proposal_link
+            .queue_block_number
+            .clone()
+            .unwrap_or_else(|| "0".to_owned()),
+        block_timestamp: proposal_link.queue_block_timestamp.clone(),
+        transaction_hash: proposal_link.queue_transaction_hash.clone(),
+    }
+}
+
+fn governor_timelock_control_operation_write(
+    common: &TimelockEventCommon,
+    operation_id: &str,
+    proposal_link: &TimelockProposalActionLink,
+) -> TimelockOperationWrite {
+    let mut operation = operation_stub(common, operation_id, "Queued");
+    operation.timelock_type = "GovernorTimelockControl".to_owned();
+    operation.call_count = Some(1);
+    operation.delay_seconds = proposal_link
+        .queue_eta
+        .as_deref()
+        .zip(common.block_timestamp.as_deref())
+        .and_then(|(eta, timestamp)| subtract_decimal_strings(eta, timestamp));
+    operation.ready_at = proposal_link.queue_eta.clone();
+    operation.queued_block_number = proposal_link.queue_block_number.clone();
+    operation.queued_block_timestamp = proposal_link.queue_block_timestamp.clone();
+    operation.queued_transaction_hash = Some(proposal_link.queue_transaction_hash.clone());
+    if let Some(execution_transaction_hash) = &proposal_link.execution_transaction_hash {
+        operation.state = "Done".to_owned();
+        operation.executed_call_count = Some(1);
+        operation.executed_block_number = proposal_link.execution_block_number.clone();
+        operation.executed_block_timestamp = proposal_link.execution_block_timestamp.clone();
+        operation.executed_transaction_hash = Some(execution_transaction_hash.clone());
+    }
+    bind_operation_to_proposal(&mut operation, Some(proposal_link));
+    operation
+}
+
+fn governor_timelock_control_call_write(
+    common: &TimelockEventCommon,
+    operation_ref: &str,
+    proposal_link: &TimelockProposalActionLink,
+) -> TimelockCallWrite {
+    let mut call = TimelockCallWrite {
+        id: call_ref(
+            operation_ref,
+            &proposal_link.proposal_action_index.to_string(),
+        ),
+        contract_set_id: common.contract_set_id.clone(),
+        chain_id: common.chain_id,
+        dao_code: common.dao_code.clone(),
+        governor_address: common.governor_address.clone(),
+        timelock_address: common.timelock_address.clone(),
+        contract_address: common.contract_address.clone(),
+        log_index: common.log_index,
+        transaction_index: common.transaction_index,
+        operation_id: proposal_link_operation_id(proposal_link),
+        operation_ref: operation_ref.to_owned(),
+        proposal_ref: None,
+        proposal_id: None,
+        proposal_action_id: None,
+        proposal_action_index: None,
+        action_index: proposal_link.proposal_action_index,
+        target: proposal_link.target.clone(),
+        value: proposal_link.value.clone(),
+        data: proposal_link.calldata.clone(),
+        predecessor: None,
+        delay_seconds: proposal_link
+            .queue_eta
+            .as_deref()
+            .zip(common.block_timestamp.as_deref())
+            .and_then(|(eta, timestamp)| subtract_decimal_strings(eta, timestamp)),
+        state: "Scheduled".to_owned(),
+        scheduled_block_number: proposal_link.queue_block_number.clone(),
+        scheduled_block_timestamp: proposal_link.queue_block_timestamp.clone(),
+        scheduled_transaction_hash: Some(proposal_link.queue_transaction_hash.clone()),
+        executed_block_number: None,
+        executed_block_timestamp: None,
+        executed_transaction_hash: None,
+    };
+    if let Some(execution_transaction_hash) = &proposal_link.execution_transaction_hash {
+        call.state = "Done".to_owned();
+        call.executed_block_number = proposal_link.execution_block_number.clone();
+        call.executed_block_timestamp = proposal_link.execution_block_timestamp.clone();
+        call.executed_transaction_hash = Some(execution_transaction_hash.clone());
+    }
+    bind_call_to_proposal(&mut call, Some(proposal_link));
+    call
 }
 
 fn scheduled_operation_write(
@@ -1120,6 +1308,16 @@ fn operation_id(event: &DecodedTimelockEvent) -> Option<&str> {
     }
 }
 
+fn proposal_link_operation_id(proposal_link: &TimelockProposalActionLink) -> String {
+    let raw_proposal_id = proposal_link.raw_proposal_id.trim();
+    if raw_proposal_id.starts_with("0x") {
+        return normalize_identifier(raw_proposal_id);
+    }
+    U256::from_dec_str(raw_proposal_id)
+        .map(|value| format!("0x{value:064x}"))
+        .unwrap_or_else(|_| normalize_identifier(raw_proposal_id))
+}
+
 fn operation_ref(common: &TimelockEventCommon, operation_id: &str) -> String {
     format!(
         "timelock-operation:{}:{}:{}:{}:{}",
@@ -1176,6 +1374,20 @@ fn add_decimal_strings(left: &str, right: &str) -> Option<String> {
     } else {
         value.to_owned()
     })
+}
+
+fn subtract_decimal_strings(left: &str, right: &str) -> Option<String> {
+    if left.is_empty()
+        || right.is_empty()
+        || !left.bytes().all(|byte| byte.is_ascii_digit())
+        || !right.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    let left = U256::from_dec_str(left).ok()?;
+    let right = U256::from_dec_str(right).ok()?;
+    (left >= right).then(|| (left - right).to_string())
 }
 
 fn merge_sum(left: Option<usize>, right: Option<usize>) -> Option<usize> {

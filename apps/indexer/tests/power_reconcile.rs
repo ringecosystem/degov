@@ -230,7 +230,7 @@ fn test_plan_power_reconcile_emits_chaintool_get_votes_reads() {
         "0x2222222222222222222222222222222222222222"
     );
     assert_eq!(read.key.method, ChainReadMethod::GetVotes);
-    assert_eq!(read.key.block_mode, BlockReadMode::Safe);
+    assert_eq!(read.key.block_mode, BlockReadMode::AtBlock(200));
     assert_eq!(read.key.args, vec![acct.clone()]);
     assert_eq!(
         read.metadata.reasons,
@@ -247,7 +247,7 @@ fn test_plan_power_reconcile_emits_chaintool_get_votes_reads() {
         })
         .expect("balance read");
     assert_eq!(balance_read.key.contract_address, read.key.contract_address);
-    assert_eq!(balance_read.key.block_mode, BlockReadMode::Safe);
+    assert_eq!(balance_read.key.block_mode, BlockReadMode::AtBlock(200));
     assert_eq!(balance_read.key.args, read.key.args);
 }
 

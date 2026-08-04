@@ -7,7 +7,13 @@
     "on": "on",
     "discussion": "Discussion",
     "loadingTitle": "Proposal Loading",
-    "loadingDescription": "Loading proposal data, please wait..."
+    "loadingDescription": "Loading proposal data, please wait...",
+    "checkingProposalTitle": "Checking Proposal",
+    "checkingProposalDescription": "Checking whether this proposal is available.",
+    "indexingTitle": "Proposal Indexing",
+    "indexingDescription": "This proposal is on chain and will appear here shortly.",
+    "indexingProblemTitle": "Proposal Indexing Delayed",
+    "indexingProblemDescription": "This proposal is on chain, but the page data is still unavailable. Please try again later."
   },
   "tabs": {
     "content": "Content",
@@ -34,11 +40,12 @@
   },
   "currentVotes": {
     "title": "Current Votes",
-    "quorum": "Quorum",
+    "quorumProgress": "Quorum progress",
+    "totalParticipation": "Total participation",
     "majoritySupport": "Majority support",
     "yes": "Yes",
     "no": "No",
-    "participation": "{current} of {required}"
+    "quorumParticipation": "{current} of {required}"
   },
   "status": {
     "title": "Status",

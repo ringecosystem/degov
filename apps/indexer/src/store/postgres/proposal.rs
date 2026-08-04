@@ -30,6 +30,62 @@ async fn write_proposal_batch_rows(
     for row in &batch.proposal_deadline_extensions {
         insert_proposal_deadline_extension(transaction, row).await?;
     }
+    for row in &batch.voting_delay_set {
+        insert_governor_parameter_change(
+            transaction,
+            "voting_delay_set",
+            "old_voting_delay",
+            "new_voting_delay",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.voting_period_set {
+        insert_governor_parameter_change(
+            transaction,
+            "voting_period_set",
+            "old_voting_period",
+            "new_voting_period",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.proposal_threshold_set {
+        insert_governor_parameter_change(
+            transaction,
+            "proposal_threshold_set",
+            "old_proposal_threshold",
+            "new_proposal_threshold",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.quorum_numerator_updated {
+        insert_governor_parameter_change(
+            transaction,
+            "quorum_numerator_updated",
+            "old_quorum_numerator",
+            "new_quorum_numerator",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.late_quorum_vote_extension_set {
+        insert_governor_parameter_change(
+            transaction,
+            "late_quorum_vote_extension_set",
+            "old_late_quorum_vote_extension",
+            "new_late_quorum_vote_extension",
+            row,
+        )
+        .await?;
+    }
+    for row in &batch.timelock_change {
+        insert_governor_timelock_change(transaction, row).await?;
+    }
+    for row in &batch.governance_parameter_checkpoints {
+        insert_governance_parameter_checkpoint(transaction, row).await?;
+    }
     Ok(())
 }
 
@@ -216,15 +272,15 @@ const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
             vote_start, vote_end, description, block_number, block_timestamp, transaction_hash,
             title, vote_start_timestamp, vote_end_timestamp, description_hash, proposal_snapshot,
             proposal_deadline, proposal_eta, queue_ready_at, queue_expires_at, block_interval,
-            clock_mode, quorum, decimals, timelock_address
+            counting_mode, clock_mode, quorum, decimals, timelock_address
          )
          VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
             $15::NUMERIC(78, 0), $16::NUMERIC(78, 0), $17, $18::NUMERIC(78, 0),
             $19::NUMERIC(78, 0), $20, $21, $22::NUMERIC(78, 0), $23::NUMERIC(78, 0),
             $24, $25::NUMERIC(78, 0), $26::NUMERIC(78, 0), $27::NUMERIC(78, 0),
-            $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30, $31, $32::NUMERIC(78, 0),
-            $33::NUMERIC(78, 0), $34
+            $28::NUMERIC(78, 0), $29::NUMERIC(78, 0), $30, $31, $32, $33::NUMERIC(78, 0),
+            $34::NUMERIC(78, 0), $35
          )
          ON CONFLICT (id) DO UPDATE
          SET proposer = CASE WHEN EXCLUDED.proposer = '' THEN proposal.proposer ELSE EXCLUDED.proposer END,
@@ -238,14 +294,25 @@ const UPSERT_PROPOSAL_SQL: &str = "INSERT INTO proposal (
              title = CASE WHEN EXCLUDED.title = '' THEN proposal.title ELSE EXCLUDED.title END,
              vote_start_timestamp = CASE WHEN EXCLUDED.vote_start_timestamp = 0::NUMERIC(78, 0) THEN proposal.vote_start_timestamp ELSE EXCLUDED.vote_start_timestamp END,
              vote_end_timestamp = CASE WHEN EXCLUDED.vote_end_timestamp = 0::NUMERIC(78, 0) THEN proposal.vote_end_timestamp ELSE EXCLUDED.vote_end_timestamp END,
-             description_hash = COALESCE(EXCLUDED.description_hash, proposal.description_hash),
+             description_hash = CASE
+                 WHEN EXCLUDED.proposer = '' AND EXCLUDED.description = '' THEN proposal.description_hash
+                 ELSE COALESCE(EXCLUDED.description_hash, proposal.description_hash)
+             END,
              proposal_snapshot = COALESCE(EXCLUDED.proposal_snapshot, proposal.proposal_snapshot),
              proposal_deadline = COALESCE(EXCLUDED.proposal_deadline, proposal.proposal_deadline),
              proposal_eta = COALESCE(EXCLUDED.proposal_eta, proposal.proposal_eta),
              queue_ready_at = COALESCE(EXCLUDED.queue_ready_at, proposal.queue_ready_at),
              queue_expires_at = COALESCE(EXCLUDED.queue_expires_at, proposal.queue_expires_at),
-             block_interval = COALESCE(EXCLUDED.block_interval, proposal.block_interval),
-             clock_mode = EXCLUDED.clock_mode,
+             counting_mode = COALESCE(EXCLUDED.counting_mode, proposal.counting_mode),
+             block_interval = CASE
+                 WHEN EXCLUDED.proposer = '' AND EXCLUDED.clock_mode = 'blocknumber' AND proposal.clock_mode <> 'blocknumber' THEN NULL
+                 WHEN EXCLUDED.clock_mode <> 'blocknumber' THEN EXCLUDED.block_interval
+                 ELSE COALESCE(EXCLUDED.block_interval, proposal.block_interval)
+             END,
+             clock_mode = CASE
+                 WHEN EXCLUDED.proposer = '' AND EXCLUDED.clock_mode = 'blocknumber' AND proposal.clock_mode <> 'blocknumber' THEN proposal.clock_mode
+                 ELSE EXCLUDED.clock_mode
+             END,
              quorum = CASE WHEN EXCLUDED.quorum = 0::NUMERIC(78, 0) THEN proposal.quorum ELSE EXCLUDED.quorum END,
              decimals = CASE WHEN EXCLUDED.decimals = 0::NUMERIC(78, 0) THEN proposal.decimals ELSE EXCLUDED.decimals END,
              timelock_address = COALESCE(EXCLUDED.timelock_address, proposal.timelock_address)";
@@ -293,6 +360,7 @@ async fn upsert_proposal(
     .bind(row.queue_ready_at.as_deref())
     .bind(row.queue_expires_at.as_deref())
     .bind(row.block_interval.as_deref())
+    .bind(row.counting_mode.as_deref())
     .bind(&row.clock_mode)
     .bind(&row.quorum)
     .bind(&row.decimals)
@@ -365,6 +433,8 @@ pub struct ProposalReferenceFieldCandidate {
     pub proposal_id: String,
     pub title: String,
     pub block_interval: Option<String>,
+    pub clock_mode: String,
+    pub counting_mode: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -372,8 +442,12 @@ pub struct ProposalReferenceFieldUpdate {
     pub id: String,
     pub previous_title: String,
     pub previous_block_interval: Option<String>,
+    pub previous_clock_mode: String,
+    pub previous_counting_mode: Option<String>,
     pub title: String,
+    pub clock_mode: String,
     pub block_interval: Option<String>,
+    pub counting_mode: Option<String>,
 }
 
 pub async fn read_proposal_title_refresh_candidates(
@@ -452,7 +526,7 @@ pub async fn read_proposal_reference_field_candidates(
     dao_code: &str,
 ) -> Result<Vec<ProposalReferenceFieldCandidate>, PostgresIndexerRunnerStoreError> {
     let rows = sqlx::query(
-        "SELECT id, proposal_id, title, block_interval
+        "SELECT id, proposal_id, title, block_interval, clock_mode, counting_mode
          FROM proposal
          WHERE dao_code = $1
          ORDER BY block_number, transaction_index, log_index, id",
@@ -468,13 +542,17 @@ pub async fn read_proposal_reference_field_candidates(
             proposal_id: row.get("proposal_id"),
             title: row.get("title"),
             block_interval: row.get("block_interval"),
+            clock_mode: row.get("clock_mode"),
+            counting_mode: row.get("counting_mode"),
         })
         .collect())
 }
 
 const UPDATE_PROPOSAL_REFERENCE_FIELDS_SQL_PREFIX: &str =
     "UPDATE proposal SET title = proposal_reference_fields.title,
-         block_interval = proposal_reference_fields.block_interval
+         block_interval = proposal_reference_fields.block_interval,
+         clock_mode = proposal_reference_fields.clock_mode,
+         counting_mode = proposal_reference_fields.counting_mode
      FROM (";
 const UPDATE_PROPOSAL_REFERENCE_FIELDS_CHUNK_SIZE: usize = 5_000;
 
@@ -506,23 +584,32 @@ async fn update_proposal_reference_field_chunk(
         row.push_bind(&update.id)
             .push_bind(&update.previous_title)
             .push_bind(&update.previous_block_interval)
+            .push_bind(&update.previous_clock_mode)
+            .push_bind(&update.previous_counting_mode)
             .push_bind(&update.title)
-            .push_bind(&update.block_interval);
+            .push_bind(&update.clock_mode)
+            .push_bind(&update.block_interval)
+            .push_bind(&update.counting_mode);
     });
     builder.push(
         ") AS proposal_reference_fields(
-            id, previous_title, previous_block_interval, title, block_interval
+            id, previous_title, previous_block_interval, previous_clock_mode, previous_counting_mode,
+            title, clock_mode, block_interval, counting_mode
          )
          WHERE proposal.id = proposal_reference_fields.id
            AND proposal.title = proposal_reference_fields.previous_title
            AND proposal.block_interval IS NOT DISTINCT FROM proposal_reference_fields.previous_block_interval
+           AND proposal.clock_mode = proposal_reference_fields.previous_clock_mode
+           AND proposal.counting_mode IS NOT DISTINCT FROM proposal_reference_fields.previous_counting_mode
            AND proposal.dao_code = ",
     );
     builder.push_bind(dao_code);
     builder.push(
         " AND (
             proposal.title IS DISTINCT FROM proposal_reference_fields.title
+            OR proposal.clock_mode IS DISTINCT FROM proposal_reference_fields.clock_mode
             OR proposal.block_interval IS DISTINCT FROM proposal_reference_fields.block_interval
+            OR proposal.counting_mode IS DISTINCT FROM proposal_reference_fields.counting_mode
          )",
     );
 
@@ -835,6 +922,143 @@ async fn insert_proposal_deadline_extension(
         "proposal_deadline_extension.block_timestamp",
     )?)
     .bind(&row.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_governor_parameter_change(
+    transaction: &mut Transaction<'_, Postgres>,
+    table: &str,
+    old_column: &str,
+    new_column: &str,
+    row: &GovernorParameterChangeWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    let sql = format!(
+        "INSERT INTO {table} (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, {old_column}, {new_column}, block_number, block_timestamp,
+            transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8::NUMERIC(78, 0), $9::NUMERIC(78, 0),
+            $10::NUMERIC(78, 0), $11::NUMERIC(78, 0), $12
+         )
+         ON CONFLICT (id) DO NOTHING"
+    );
+
+    sqlx::query(&sql)
+        .bind(&row.id)
+        .bind(row.common.chain_id)
+        .bind(&row.common.dao_code)
+        .bind(&row.common.governor_address)
+        .bind(&row.common.contract_address)
+        .bind(u64_to_i32(
+            row.common.log_index,
+            "governor_parameter_change.log_index",
+        )?)
+        .bind(u64_to_i32(
+            row.common.transaction_index,
+            "governor_parameter_change.transaction_index",
+        )?)
+        .bind(&row.old_value)
+        .bind(&row.new_value)
+        .bind(&row.common.block_number)
+        .bind(required_numeric(
+            &row.common.block_timestamp,
+            "governor_parameter_change.block_timestamp",
+        )?)
+        .bind(&row.common.transaction_hash)
+        .execute(&mut **transaction)
+        .await?;
+
+    Ok(())
+}
+
+async fn insert_governor_timelock_change(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &GovernorTimelockChangeWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO timelock_change (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, old_timelock, new_timelock, block_number, block_timestamp,
+            transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::NUMERIC(78, 0),
+            $11::NUMERIC(78, 0), $12
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.common.chain_id)
+    .bind(&row.common.dao_code)
+    .bind(&row.common.governor_address)
+    .bind(&row.common.contract_address)
+    .bind(u64_to_i32(
+        row.common.log_index,
+        "timelock_change.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.common.transaction_index,
+        "timelock_change.transaction_index",
+    )?)
+    .bind(&row.old_timelock)
+    .bind(&row.new_timelock)
+    .bind(&row.common.block_number)
+    .bind(required_numeric(
+        &row.common.block_timestamp,
+        "timelock_change.block_timestamp",
+    )?)
+    .bind(&row.common.transaction_hash)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
+}
+
+async fn insert_governance_parameter_checkpoint(
+    transaction: &mut Transaction<'_, Postgres>,
+    row: &GovernanceParameterCheckpointWrite,
+) -> Result<(), PostgresIndexerRunnerStoreError> {
+    sqlx::query(
+        "INSERT INTO governance_parameter_checkpoint (
+            id, chain_id, dao_code, governor_address, contract_address, log_index,
+            transaction_index, event_name, parameter_name, value_type, old_value, new_value,
+            block_number, block_timestamp, transaction_hash
+         )
+         VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13::NUMERIC(78, 0), $14::NUMERIC(78, 0), $15
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&row.id)
+    .bind(row.common.chain_id)
+    .bind(&row.common.dao_code)
+    .bind(&row.common.governor_address)
+    .bind(&row.common.contract_address)
+    .bind(u64_to_i32(
+        row.common.log_index,
+        "governance_parameter_checkpoint.log_index",
+    )?)
+    .bind(u64_to_i32(
+        row.common.transaction_index,
+        "governance_parameter_checkpoint.transaction_index",
+    )?)
+    .bind(&row.event_name)
+    .bind(&row.parameter_name)
+    .bind(&row.value_type)
+    .bind(row.old_value.as_deref())
+    .bind(&row.new_value)
+    .bind(&row.common.block_number)
+    .bind(required_numeric(
+        &row.common.block_timestamp,
+        "governance_parameter_checkpoint.block_timestamp",
+    )?)
+    .bind(&row.common.transaction_hash)
     .execute(&mut **transaction)
     .await?;
 
