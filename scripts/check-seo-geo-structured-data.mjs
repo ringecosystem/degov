@@ -267,6 +267,11 @@ assert.ok(
   "publisher must not be a shared home.root Organization/WebSite requirement"
 );
 
+assert.ok(
+  proposalDecision.validation.includes("canonical-jsonld-url-agreement"),
+  "proposal JSON-LD must validate canonical URL agreement"
+);
+
 const atlasDaoDecision = contract.pageClassDecisions.find(
   (decision) => decision.id === "atlas.dao-detail"
 );

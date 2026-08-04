@@ -352,6 +352,7 @@
       "validation": [
         "json-ld-parse",
         "proposal-visible-content-comparison",
+        "canonical-jsonld-url-agreement",
         "metadata-jsonld-entity-agreement",
         "invalid-route-no-jsonld"
       ],
