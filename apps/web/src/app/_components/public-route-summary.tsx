@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { buildDaoPublicSummaryFacts } from "@/lib/dao-public-summary";
 import { cleanMetadataText, truncateMetadataText } from "@/lib/metadata";
 import type { ProposalItem, ProposalListItem } from "@/services/graphql/types";
 import type { Config } from "@/types/config";
@@ -10,22 +11,8 @@ function summarize(value?: string | null, maxLength = 220): string {
   return truncateMetadataText(cleanMetadataText(value), maxLength);
 }
 
-function safeExternalUrl(value?: string | null): string | null {
-  if (!value) return null;
-
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export function DaoPublicSummary({ config }: { config: Config }) {
-  const websiteUrl = safeExternalUrl(config.links?.website);
-  const discussionUrl = safeExternalUrl(config.offChainDiscussionUrl);
+  const facts = buildDaoPublicSummaryFacts(config);
 
   return (
     <section className="rounded-[14px] bg-card p-[20px] shadow-card">
@@ -39,17 +26,82 @@ export function DaoPublicSummary({ config }: { config: Config }) {
         <Link className="underline" href="/proposals">
           View proposals
         </Link>
-        {websiteUrl ? (
-          <a className="underline" href={websiteUrl}>
+        {facts.officialWebsiteUrl ? (
+          <a className="underline" href={facts.officialWebsiteUrl}>
             Official website
           </a>
         ) : null}
-        {discussionUrl ? (
-          <a className="underline" href={discussionUrl}>
+        {facts.discussionUrl ? (
+          <a className="underline" href={facts.discussionUrl}>
             Discussion
           </a>
         ) : null}
+        {facts.registrySourceUrl ? (
+          <a className="underline" href={facts.registrySourceUrl}>
+            Registry source
+          </a>
+        ) : null}
       </nav>
+      <dl className="mt-[18px] grid gap-[10px] text-[14px] sm:grid-cols-2">
+        <div>
+          <dt className="text-muted-foreground">Canonical DAO site</dt>
+          <dd>{facts.canonicalSiteUrl ?? "Unavailable"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Chain</dt>
+          <dd>
+            {facts.chain.name} ({facts.chain.id})
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Governor contract</dt>
+          <dd>
+            {facts.contracts.governor.url ? (
+              <a className="underline" href={facts.contracts.governor.url}>
+                {facts.contracts.governor.address}
+              </a>
+            ) : (
+              facts.contracts.governor.address
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Governance token</dt>
+          <dd>
+            {facts.contracts.governanceToken.url ? (
+              <a className="underline" href={facts.contracts.governanceToken.url}>
+                {facts.contracts.governanceToken.address}
+              </a>
+            ) : (
+              facts.contracts.governanceToken.address
+            )}{" "}
+            ({facts.contracts.governanceToken.standard})
+          </dd>
+        </div>
+        {facts.contracts.timelock ? (
+          <div>
+            <dt className="text-muted-foreground">Timelock contract</dt>
+            <dd>
+              {facts.contracts.timelock.url ? (
+                <a className="underline" href={facts.contracts.timelock.url}>
+                  {facts.contracts.timelock.address}
+                </a>
+              ) : (
+                facts.contracts.timelock.address
+              )}
+            </dd>
+          </div>
+        ) : null}
+        <div>
+          <dt className="text-muted-foreground">Registry start block</dt>
+          <dd>{facts.indexer.startBlock}</dd>
+        </div>
+      </dl>
+      <p className="mt-[15px] text-[13px] text-muted-foreground">
+        Registry configuration is the source for DAO identity, chain, and contract links. This
+        static summary does not claim live indexed governance freshness; proposal views show live
+        indexer state when supported by the source.
+      </p>
     </section>
   );
 }
