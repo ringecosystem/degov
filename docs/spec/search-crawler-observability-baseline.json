@@ -1,0 +1,345 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1024",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/search-crawler-observability-baseline.json",
+    "localCheck": "pnpm run test:seo-geo-observability",
+    "changeRule": "A surface, data source, metric, crawler class, or report may be changed only with an owner, access state, privacy classification, and reproducible collection method."
+  },
+  "surfaceGroups": [
+    {
+      "id": "home",
+      "name": "DeGov official website",
+      "primaryHost": "degov.ai",
+      "repository": "ringecosystem/degov-home",
+      "ownerRole": "official-site owner",
+      "searchConsole": {
+        "accessState": "access-gap",
+        "propertyScope": "domain-or-url-prefix-required",
+        "ownerRole": "official-site owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "indexing-pages", "search-performance", "field-cwv"]
+      },
+      "bingWebmaster": {
+        "accessState": "access-gap",
+        "propertyScope": "site-required",
+        "ownerRole": "official-site owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "crawl-diagnostics", "search-performance", "ai-performance-availability"]
+      },
+      "analytics": {
+        "accessState": "access-gap",
+        "ownerRole": "analytics owner",
+        "privacyMode": "aggregate-only"
+      },
+      "logs": {
+        "accessState": "access-gap",
+        "ownerRole": "edge/runtime owner",
+        "privacyMode": "aggregate-or-sampled"
+      },
+      "sitemaps": [
+        {
+          "url": "https://degov.ai/sitemap.xml",
+          "submissionState": "unknown",
+          "processingState": "access-gap"
+        }
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "DeGov documentation",
+      "primaryHost": "docs.degov.ai",
+      "repository": "ringecosystem/degov-docs",
+      "ownerRole": "docs owner",
+      "searchConsole": {
+        "accessState": "access-gap",
+        "propertyScope": "url-prefix-required",
+        "ownerRole": "docs owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "indexing-pages", "search-performance", "field-cwv"]
+      },
+      "bingWebmaster": {
+        "accessState": "access-gap",
+        "propertyScope": "site-required",
+        "ownerRole": "docs owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "crawl-diagnostics", "search-performance", "ai-performance-availability"]
+      },
+      "analytics": {
+        "accessState": "access-gap",
+        "ownerRole": "analytics owner",
+        "privacyMode": "aggregate-only"
+      },
+      "logs": {
+        "accessState": "access-gap",
+        "ownerRole": "edge/runtime owner",
+        "privacyMode": "aggregate-or-sampled"
+      },
+      "sitemaps": [
+        {
+          "url": "https://docs.degov.ai/sitemap.xml",
+          "submissionState": "unknown",
+          "processingState": "access-gap"
+        }
+      ]
+    },
+    {
+      "id": "square",
+      "name": "DeGov Square",
+      "primaryHost": "square.degov.ai",
+      "repository": "ringecosystem/degov-square",
+      "ownerRole": "square owner",
+      "searchConsole": {
+        "accessState": "access-gap",
+        "propertyScope": "url-prefix-required",
+        "ownerRole": "square owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "indexing-pages", "search-performance", "field-cwv"]
+      },
+      "bingWebmaster": {
+        "accessState": "access-gap",
+        "propertyScope": "site-required",
+        "ownerRole": "square owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "crawl-diagnostics", "search-performance", "ai-performance-availability"]
+      },
+      "analytics": {
+        "accessState": "known-present-unverified",
+        "ownerRole": "analytics owner",
+        "privacyMode": "aggregate-only",
+        "notes": "Research observed GA on Square, but property ownership and conversion contract are not confirmed here."
+      },
+      "logs": {
+        "accessState": "access-gap",
+        "ownerRole": "edge/runtime owner",
+        "privacyMode": "aggregate-or-sampled"
+      },
+      "sitemaps": [
+        {
+          "url": "https://square.degov.ai/sitemap.xml",
+          "submissionState": "unknown",
+          "processingState": "access-gap"
+        }
+      ]
+    },
+    {
+      "id": "dao-sites",
+      "name": "Individual DAO governance sites",
+      "primaryHost": "representative DeGov-managed and custom DAO hosts",
+      "repository": "ringecosystem/degov",
+      "ownerRole": "DAO-site owner",
+      "representativeHosts": ["demo.degov.ai", "lisk.degov.ai"],
+      "searchConsole": {
+        "accessState": "access-gap",
+        "propertyScope": "domain-or-url-prefix-per-host",
+        "ownerRole": "DAO-site owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "indexing-pages", "canonical-selection", "search-performance", "field-cwv"]
+      },
+      "bingWebmaster": {
+        "accessState": "access-gap",
+        "propertyScope": "site-per-host",
+        "ownerRole": "DAO-site owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "crawl-diagnostics", "search-performance", "ai-performance-availability"]
+      },
+      "analytics": {
+        "accessState": "fragmented-unverified",
+        "ownerRole": "analytics owner plus DAO owner where applicable",
+        "privacyMode": "aggregate-only",
+        "notes": "DAO configs can declare analytics tags; custom-domain ownership must be confirmed before central reporting."
+      },
+      "logs": {
+        "accessState": "access-gap",
+        "ownerRole": "edge/runtime owner",
+        "privacyMode": "aggregate-or-sampled"
+      },
+      "sitemaps": [
+        {
+          "url": "https://demo.degov.ai/sitemap.xml",
+          "submissionState": "unknown",
+          "processingState": "access-gap"
+        },
+        {
+          "url": "https://lisk.degov.ai/sitemap.xml",
+          "submissionState": "unknown",
+          "processingState": "access-gap"
+        }
+      ]
+    },
+    {
+      "id": "atlas",
+      "name": "DeGov Atlas",
+      "primaryHost": "atlas.degov.ai",
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerRole": "Atlas owner",
+      "searchConsole": {
+        "accessState": "access-gap",
+        "propertyScope": "url-prefix-required",
+        "ownerRole": "Atlas owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "indexing-pages", "search-performance", "field-cwv"]
+      },
+      "bingWebmaster": {
+        "accessState": "access-gap",
+        "propertyScope": "site-required",
+        "ownerRole": "Atlas owner",
+        "requiredEvidence": ["ownership-state", "sitemap-processing", "crawl-diagnostics", "search-performance", "ai-performance-availability"]
+      },
+      "analytics": {
+        "accessState": "access-gap",
+        "ownerRole": "analytics owner",
+        "privacyMode": "aggregate-only"
+      },
+      "logs": {
+        "accessState": "access-gap",
+        "ownerRole": "edge/runtime owner",
+        "privacyMode": "aggregate-or-sampled"
+      },
+      "sitemaps": [
+        {
+          "url": "https://atlas.degov.ai/sitemap.xml",
+          "submissionState": "unknown",
+          "processingState": "access-gap"
+        }
+      ]
+    }
+  ],
+  "metricGroups": [
+    {
+      "id": "canonical-indexing",
+      "requiredFields": ["intendedCanonicalUrl", "indexedCanonicalUrl", "googleSelectedCanonicalUrl", "status", "lastObservedAt"],
+      "interpretation": "Compare intended canonical URLs with indexed and selected canonicals by surface; do not count total indexed URLs as success by itself.",
+      "privacyClass": "public-or-aggregate"
+    },
+    {
+      "id": "sitemap-processing",
+      "requiredFields": ["sitemapUrl", "submittedAt", "lastReadAt", "discoveredUrls", "indexedUrls", "errors"],
+      "interpretation": "Record submitted, discovered, indexed, invalid, redirected, noindex, and wrong-host sitemap outcomes.",
+      "privacyClass": "aggregate"
+    },
+    {
+      "id": "query-landing-performance",
+      "requiredFields": ["surface", "queryClass", "landingPage", "clicks", "impressions", "ctr", "window"],
+      "interpretation": "Separate branded and non-brand query coverage, qualified landing visits, and product outcomes where consented analytics exists.",
+      "privacyClass": "aggregate"
+    },
+    {
+      "id": "crawl-errors",
+      "requiredFields": ["surface", "host", "pathGroup", "statusGroup", "errorType", "count", "window"],
+      "interpretation": "Track soft 404, duplicate, blocked, server-error, and currently-not-indexed groups without exposing raw private logs.",
+      "privacyClass": "aggregate"
+    },
+    {
+      "id": "field-cwv",
+      "requiredFields": ["surface", "pageTemplate", "metric", "p75", "source", "window"],
+      "interpretation": "Use field Core Web Vitals only where enough data exists; lab data must be labeled separately.",
+      "privacyClass": "aggregate"
+    },
+    {
+      "id": "bing-ai-performance",
+      "requiredFields": ["surface", "availabilityState", "citationUrl", "groundingQuery", "window"],
+      "interpretation": "Record Bing-supported AI Performance data where available; do not treat it as a universal GEO score.",
+      "privacyClass": "aggregate"
+    }
+  ],
+  "crawlerLogSchema": {
+    "requiredFields": ["timestamp", "host", "path", "status", "bytes", "latencyMs", "userAgent", "crawlerPurpose", "identityVerification", "cacheResult", "wafAction"],
+    "optionalFields": ["refererHost", "country", "asn", "requestId", "sampleRate"],
+    "privacyClass": "aggregate-or-sampled",
+    "storageRule": "Do not commit raw private logs or exports; publish only aggregate reports or redacted samples.",
+    "identityRule": "A claimed User-Agent alone is unverified. Verified crawler identity requires official IP/rDNS guidance or platform-provided verification."
+  },
+  "crawlerPurposes": [
+    {
+      "id": "search-index",
+      "examples": ["Googlebot", "Bingbot"],
+      "expectedTreatment": "Approved public content should be reachable unless route policy says otherwise."
+    },
+    {
+      "id": "ai-search-reference",
+      "examples": ["OAI-SearchBot", "Claude-SearchBot", "PerplexityBot"],
+      "expectedTreatment": "Measure separately from training crawlers and preserve policy gaps."
+    },
+    {
+      "id": "user-triggered-fetch",
+      "examples": ["ChatGPT-User", "Claude-User", "Perplexity-User"],
+      "expectedTreatment": "Classify separately from automatic indexing and training."
+    },
+    {
+      "id": "model-training",
+      "examples": ["GPTBot", "ClaudeBot", "Google-Extended"],
+      "expectedTreatment": "Observed access must be compared with the separate crawler policy issue before changing allow/deny behavior."
+    },
+    {
+      "id": "social-preview",
+      "examples": ["facebookexternalhit", "LinkedInBot", "Twitterbot", "Slackbot", "Discordbot", "TelegramBot"],
+      "expectedTreatment": "Public pages and share assets should be fetchable when route policy approves sharing."
+    },
+    {
+      "id": "normal-browser",
+      "examples": ["Mozilla-compatible browser sessions"],
+      "expectedTreatment": "Keep separate from crawler metrics and conversion reporting."
+    }
+  ],
+  "changeAnnotationModel": {
+    "requiredEvents": ["release", "sitemap-submission", "robots-change", "cdn-waf-change", "content-release", "crawler-policy-change", "experiment-start", "experiment-stop"],
+    "requiredFields": ["eventId", "date", "surface", "eventType", "owner", "summary", "links"],
+    "comparisonWindowsDays": [7, 28, 90],
+    "rule": "Every impact claim must name the pre/post window and the relevant annotation."
+  },
+  "baselineReports": [
+    {
+      "id": "baseline-2026-08-04-public-readback",
+      "date": "2026-08-04",
+      "linkedUmbrellaIssue": "https://github.com/ringecosystem/degov/issues/714",
+      "scope": "public raw readback plus access-gap inventory",
+      "result": "mixed",
+      "evidenceSource": "docs/spec/seo-geo-route-contract.json dryRunEvidence and this observability contract",
+      "surfaceResults": [
+        {
+          "surface": "docs",
+          "status": "known-fail",
+          "summary": "Public readback observed docs.degov.ai canonical pointing at https://degov.ai/."
+        },
+        {
+          "surface": "dao-sites",
+          "status": "known-fail",
+          "summary": "Public readback observed demo.degov.ai robots.txt and sitemap.xml serving text/html app shell responses."
+        },
+        {
+          "surface": "square",
+          "status": "known-gap",
+          "summary": "GA presence was observed in research, but ownership, canonical readback, and conversion contract remain unverified."
+        },
+        {
+          "surface": "atlas",
+          "status": "known-gap",
+          "summary": "Atlas public routes are reachable, but Search Console/Bing ownership and canonical/indexing baselines remain access gaps."
+        }
+      ],
+      "privatePlatformData": {
+        "googleSearchConsole": "access-gap",
+        "bingWebmasterTools": "access-gap",
+        "analytics": "access-gap-or-fragmented",
+        "cdnServerLogs": "access-gap"
+      }
+    }
+  ],
+  "reportingRules": {
+    "allowedClaims": [
+      "access-confirmed",
+      "access-gap",
+      "not-observed",
+      "known-fail",
+      "known-gap",
+      "aggregate-trend"
+    ],
+    "forbiddenSuccessSignals": [
+      "total-indexed-pages-only",
+      "total-impressions-only",
+      "crawler-hit-volume-only",
+      "proprietary-geo-score-only"
+    ],
+    "privacyRules": [
+      "Do not commit credentials.",
+      "Do not commit raw private logs.",
+      "Do not publish wallet addresses, vote choices, authentication tokens, or user-level analytics identifiers.",
+      "Custom-domain DAO analytics ownership must be confirmed before central reporting."
+    ]
+  }
+}
