@@ -10,7 +10,23 @@ function summarize(value?: string | null, maxLength = 220): string {
   return truncateMetadataText(cleanMetadataText(value), maxLength);
 }
 
+function safeExternalUrl(value?: string | null): string | null {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function DaoPublicSummary({ config }: { config: Config }) {
+  const websiteUrl = safeExternalUrl(config.links?.website);
+  const discussionUrl = safeExternalUrl(config.offChainDiscussionUrl);
+
   return (
     <section className="rounded-[14px] bg-card p-[20px] shadow-card">
       <h1 className="text-[26px] font-extrabold">{config.name}</h1>
@@ -23,13 +39,13 @@ export function DaoPublicSummary({ config }: { config: Config }) {
         <Link className="underline" href="/proposals">
           View proposals
         </Link>
-        {config.links?.website ? (
-          <a className="underline" href={config.links.website}>
+        {websiteUrl ? (
+          <a className="underline" href={websiteUrl}>
             Official website
           </a>
         ) : null}
-        {config.offChainDiscussionUrl ? (
-          <a className="underline" href={config.offChainDiscussionUrl}>
+        {discussionUrl ? (
+          <a className="underline" href={discussionUrl}>
             Discussion
           </a>
         ) : null}

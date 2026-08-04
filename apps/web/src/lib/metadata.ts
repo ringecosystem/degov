@@ -70,7 +70,8 @@ export function buildSiteMetadata(
 ): Metadata {
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
-  const siteUrl = getPublicSiteUrl(config) ?? DEFAULT_SITE_URL;
+  const publicSiteUrl = getPublicSiteUrl(config);
+  const siteUrl = publicSiteUrl ?? DEFAULT_SITE_URL;
   const metadataBase = getMetadataBase(siteUrl);
   const ogImageUrl = buildDefaultOgImageUrl(siteUrl);
 
