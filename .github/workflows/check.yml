@@ -25,6 +25,7 @@ jobs:
           pnpm install --filter @degov/web... --frozen-lockfile
           pnpm run test:seo-geo-contract
           pnpm run test:seo-geo-observability
+          pnpm run test:seo-geo-ai-benchmark
           pnpm run test:seo-geo-content-provenance
           pnpm run test:seo-geo-crawler-policy
           pnpm run test:seo-geo-measurement
