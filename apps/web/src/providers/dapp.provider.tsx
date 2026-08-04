@@ -12,7 +12,6 @@ import { LoadingState } from "@/components/ui/loading-spinner";
 import { createConfig, createDaoChain, createQueryClient } from "@/config/wagmi";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useMounted } from "@/hooks/useMounted";
 import { useRainbowKitTheme } from "@/hooks/useRainbowKitTheme";
 import { authenticationAdapter } from "@/lib/rainbowkit-auth";
 
@@ -48,28 +47,26 @@ function RainbowKitProviders({ children }: React.PropsWithChildren<unknown>) {
 
 export function DAppProvider({ children }: React.PropsWithChildren<unknown>) {
   const dappConfig = useDaoConfig();
-  const mounted = useMounted();
   const [queryClient] = React.useState(() => createQueryClient());
-
-  const [wagmiConfig, setWagmiConfig] = React.useState<ReturnType<
-    typeof createConfig
-  > | null>(null);
 
   const currentChain: Chain = React.useMemo(
     () => createDaoChain(dappConfig?.chain),
     [dappConfig?.chain]
   );
 
-  React.useEffect(() => {
-    if (!mounted || !dappConfig) return;
-    setWagmiConfig(
-      createConfig({
+  const wagmiConfig = React.useMemo(() => {
+    if (!dappConfig) return null;
+    try {
+      return createConfig({
         appName: dappConfig?.name ?? "",
         projectId: dappConfig?.wallet?.walletConnectProjectId ?? "",
         chain: currentChain,
-      })
-    );
-  }, [mounted, dappConfig, currentChain]);
+      });
+    } catch (error) {
+      console.error("Failed to create dApp config:", error);
+      return null;
+    }
+  }, [dappConfig, currentChain]);
 
   if (!dappConfig || !wagmiConfig) {
     return (

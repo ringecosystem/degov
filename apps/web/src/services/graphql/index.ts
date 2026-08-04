@@ -519,41 +519,72 @@ export const delegateService = {
   },
 };
 
-const unsupportedProvisionalHeightEndpoints = new Set<string>();
+type IndexerStatusQueryVariant = "provisionalHeight" | "base";
+
+const indexerStatusQueryVariants: Array<{
+  key: IndexerStatusQueryVariant;
+  query: string;
+}> = [
+  {
+    key: "provisionalHeight",
+    query: Queries.GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT,
+  },
+  {
+    key: "base",
+    query: Queries.GET_INDEXER_STATUS,
+  },
+];
+
+const indexerStatusQueryVariantByEndpoint = new Map<
+  string,
+  IndexerStatusQueryVariant
+>();
+
+const isUnsupportedIndexerStatusFieldError = (error: unknown) => {
+  if (!(error instanceof Error)) return false;
+  return error.message.includes("provisionalHeight");
+};
+
+const fetchIndexerStatusWithQuery = async (endpoint: string, query: string) => {
+  const response = await request<Types.IndexerStatusResponse>(endpoint, query);
+  return response?.indexerStatus;
+};
 
 export const indexerStatusService = {
   getIndexerStatus: async (endpoint: string) => {
-    const useBaseQuery = unsupportedProvisionalHeightEndpoints.has(endpoint);
+    const cachedVariant = indexerStatusQueryVariantByEndpoint.get(endpoint);
+    const variants = cachedVariant && cachedVariant !== "base"
+      ? [
+          ...indexerStatusQueryVariants.filter(
+            (variant) => variant.key === cachedVariant
+          ),
+          ...indexerStatusQueryVariants.filter(
+            (variant) => variant.key !== cachedVariant
+          ),
+        ]
+      : indexerStatusQueryVariants;
 
-    if (useBaseQuery) {
-      const response = await request<Types.IndexerStatusResponse>(
-        endpoint,
-        Queries.GET_INDEXER_STATUS
-      );
-      return response?.indexerStatus;
-    }
-
-    try {
-      const response = await request<Types.IndexerStatusResponse>(
-        endpoint,
-        Queries.GET_INDEXER_STATUS_WITH_PROVISIONAL_HEIGHT
-      );
-      return response?.indexerStatus;
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !error.message.includes("provisionalHeight")
-      ) {
-        throw error;
+    for (const variant of variants) {
+      try {
+        const indexerStatus = await fetchIndexerStatusWithQuery(
+          endpoint,
+          variant.query
+        );
+        if (variant.key !== "base") {
+          indexerStatusQueryVariantByEndpoint.set(endpoint, variant.key);
+        }
+        return indexerStatus;
+      } catch (error) {
+        if (
+          variant.key === "base" ||
+          !isUnsupportedIndexerStatusFieldError(error)
+        ) {
+          throw error;
+        }
       }
-      unsupportedProvisionalHeightEndpoints.add(endpoint);
     }
 
-    const response = await request<Types.IndexerStatusResponse>(
-      endpoint,
-      Queries.GET_INDEXER_STATUS
-    );
-    return response?.indexerStatus;
+    return null;
   },
 };
 

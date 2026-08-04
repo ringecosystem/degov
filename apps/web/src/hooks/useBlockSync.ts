@@ -8,6 +8,10 @@ import { indexerStatusService } from "@/services/graphql";
 import { CACHE_TIMES } from "@/utils/query-config";
 
 export type BlockSyncStatus = "operational" | "syncing" | "offline";
+
+const toBlockNumber = (height?: number | null) =>
+  height !== null && height !== undefined ? Number(height) : 0;
+
 export function useBlockSync() {
   const daoConfig = useDaoConfig();
 
@@ -27,12 +31,10 @@ export function useBlockSync() {
   });
 
   const currentBlock = currentBlockData ? Number(currentBlockData) : 0;
-  const durableProcessedBlock = indexerStatus?.processedHeight
-    ? Number(indexerStatus.processedHeight)
-    : 0;
-  const indexedBlock = indexerStatus?.provisionalHeight
-    ? Number(indexerStatus.provisionalHeight)
-    : durableProcessedBlock;
+  const durableProcessedBlock = toBlockNumber(indexerStatus?.processedHeight);
+  const indexedBlock = toBlockNumber(
+    indexerStatus?.provisionalHeight ?? indexerStatus?.processedHeight
+  );
   const hasProvisionalHeight =
     indexerStatus?.provisionalHeight !== null &&
     indexerStatus?.provisionalHeight !== undefined;
