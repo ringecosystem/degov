@@ -28,6 +28,18 @@ export async function generateMetadata({
   const { id } = await params;
   const config = await getDaoConfig();
 
+  try {
+    BigInt(id);
+  } catch {
+    return {
+      title: "Proposal not found",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
+
   if (!config?.indexer?.endpoint) {
     return buildProposalMetadata({
       config,

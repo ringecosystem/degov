@@ -1,1 +1,1 @@
-export { default } from "../../ai-analysis/layout";
+export { default, metadata } from "../../ai-analysis/layout";

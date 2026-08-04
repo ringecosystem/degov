@@ -1,8 +1,8 @@
 import { unstable_cache } from "next/cache";
 import { headers } from "next/headers";
 
-import { loadConfigYaml } from "@/lib/config-yaml";
 import { getDaoConfigServer } from "@/lib/config";
+import { loadConfigYaml } from "@/lib/config-yaml";
 import type { Config } from "@/types/config";
 import { degovApiDaoConfigServer } from "@/utils/remote-api";
 
