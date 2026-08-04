@@ -1,0 +1,564 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1031",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/seo-geo-measurement-contract.json",
+    "localCheck": "pnpm run test:seo-geo-measurement",
+    "changeRule": "A surface inventory, channel definition, attribution decision, event contract, sensitive-data boundary, baseline claim, report claim, or completion claim may change only with an owner issue, privacy review state, validation method, and #714-linked rationale.",
+    "closeIssueWhen": "The privacy-safe measurement contract is approved, current analytics tags and owners are mapped, consent/custom-domain gaps are recorded, repository-specific implementation issues are linked, test/debug evidence confirms event semantics and consent behavior, a reproducible qualified-conversion report is linked to #714, and no success claim relies only on sessions, tag presence, or event volume."
+  },
+  "sourcePolicy": {
+    "observabilityBaseline": "docs/spec/search-crawler-observability-baseline.json",
+    "contentProvenanceContract": "docs/spec/seo-geo-content-provenance-contract.json",
+    "socialPreviewContract": "docs/spec/seo-geo-social-preview-contract.json",
+    "sourceUseRule": "Measurement changes must use first-party product ownership, consent authority, and debug/readback evidence. Missing referrer data remains direct/unknown and must not be inferred as AI traffic."
+  },
+  "surfaceInventory": [
+    {
+      "id": "home",
+      "name": "DeGov official website",
+      "repository": "ringecosystem/degov-home",
+      "representativeHost": "degov.ai",
+      "analyticsTagState": "access-gap",
+      "ownerState": "owner-required",
+      "consentState": "approval-required",
+      "customDomainBoundary": "first-party-degov-domain",
+      "requiredMappingEvidence": [
+        "tag or no-tag readback",
+        "analytics property owner",
+        "consent behavior",
+        "retention policy"
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "DeGov documentation",
+      "repository": "ringecosystem/degov-docs",
+      "representativeHost": "docs.degov.ai",
+      "analyticsTagState": "access-gap",
+      "ownerState": "owner-required",
+      "consentState": "approval-required",
+      "customDomainBoundary": "first-party-degov-domain",
+      "requiredMappingEvidence": [
+        "tag or no-tag readback",
+        "analytics property owner",
+        "consent behavior",
+        "retention policy"
+      ]
+    },
+    {
+      "id": "square",
+      "name": "DeGov Square",
+      "repository": "ringecosystem/degov-square",
+      "representativeHost": "square.degov.ai",
+      "analyticsTagState": "known-present-unverified",
+      "ownerState": "owner-required",
+      "consentState": "approval-required",
+      "customDomainBoundary": "first-party-degov-domain",
+      "requiredMappingEvidence": [
+        "current GA tag/property",
+        "analytics property owner",
+        "consent behavior",
+        "retention policy"
+      ]
+    },
+    {
+      "id": "dao-sites",
+      "name": "Individual DAO governance sites",
+      "repository": "ringecosystem/degov",
+      "representativeHost": "demo.degov.ai and representative registry DAO hosts",
+      "analyticsTagState": "known-present-unverified",
+      "ownerState": "dao-owner-boundary-required",
+      "consentState": "approval-required",
+      "customDomainBoundary": "custom DAO domains may have separate ownership and consent authority",
+      "requiredMappingEvidence": [
+        "representative registry GA tag configuration",
+        "custom-domain owner boundary",
+        "consent behavior",
+        "retention policy"
+      ]
+    },
+    {
+      "id": "atlas",
+      "name": "DeGov Atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "representativeHost": "atlas.degov.ai",
+      "analyticsTagState": "access-gap",
+      "ownerState": "owner-required",
+      "consentState": "approval-required",
+      "customDomainBoundary": "first-party-degov-domain",
+      "requiredMappingEvidence": [
+        "tag or no-tag readback",
+        "analytics property owner",
+        "consent behavior",
+        "retention policy"
+      ]
+    }
+  ],
+  "channelDefinitions": [
+    {
+      "id": "organic-search",
+      "name": "Organic search",
+      "classificationRule": "Referrer or analytics source is a recognized non-paid search engine and no paid campaign marker is present.",
+      "allowedExamples": [
+        "google organic",
+        "bing organic"
+      ],
+      "forbiddenInference": "Do not classify answer-engine or direct traffic as organic search without observable source evidence."
+    },
+    {
+      "id": "paid-search",
+      "name": "Paid search",
+      "classificationRule": "Paid campaign parameters or ad platform source identify paid search, if this channel is ever used.",
+      "allowedExamples": [
+        "utm_medium=cpc"
+      ],
+      "forbiddenInference": "Do not infer paid search from search-engine referrers without campaign evidence."
+    },
+    {
+      "id": "social-organic",
+      "name": "Social organic",
+      "classificationRule": "Referrer or campaign source identifies a social platform and no paid campaign marker is present.",
+      "allowedExamples": [
+        "x.com",
+        "linkedin.com",
+        "discord.com",
+        "telegram.org"
+      ],
+      "forbiddenInference": "Do not treat all chat or messenger traffic as social when the referrer is absent."
+    },
+    {
+      "id": "direct-unknown",
+      "name": "Direct or referrer unknown",
+      "classificationRule": "No reliable referrer, campaign, or source evidence is available.",
+      "allowedExamples": [
+        "typed URL",
+        "missing referrer",
+        "privacy-stripped source"
+      ],
+      "forbiddenInference": "Do not infer that direct/unknown traffic came from AI search, social, or dark social."
+    },
+    {
+      "id": "documentation-referral",
+      "name": "Documentation referral",
+      "classificationRule": "A DeGov Docs page links to another DeGov product and the referral is preserved.",
+      "allowedExamples": [
+        "docs.degov.ai to a DAO site",
+        "docs.degov.ai to Square"
+      ],
+      "forbiddenInference": "Do not overwrite the original acquisition source when cross-domain attribution preserves it."
+    },
+    {
+      "id": "cross-product-degov-referral",
+      "name": "Cross-product DeGov referral",
+      "classificationRule": "A first-party DeGov product links to another DeGov product after the original acquisition source is known or safely preserved.",
+      "allowedExamples": [
+        "degov.ai to docs.degov.ai",
+        "square.degov.ai to DAO site",
+        "atlas.degov.ai to DAO site"
+      ],
+      "forbiddenInference": "Referral exclusion must not erase the original acquisition source."
+    },
+    {
+      "id": "ai-search-assistant-referral",
+      "name": "AI/search-assistant referral",
+      "classificationRule": "A real observable referrer or campaign source identifies an AI answer, search assistant, or citation surface.",
+      "allowedExamples": [
+        "perplexity.ai",
+        "chatgpt.com when present as an observable referrer",
+        "copilot.microsoft.com when present as an observable referrer"
+      ],
+      "forbiddenInference": "Missing referrer data remains direct/unknown; do not infer AI traffic from landing page, timing, or user agent alone."
+    },
+    {
+      "id": "other-external-referral",
+      "name": "Other external referral",
+      "classificationRule": "A non-DeGov external referrer exists but does not match approved search, paid, social, docs, cross-product, or AI/search-assistant rules.",
+      "allowedExamples": [
+        "third-party article",
+        "partner website"
+      ],
+      "forbiddenInference": "Do not reclassify external referrals into campaign channels without source evidence."
+    }
+  ],
+  "candidateJourneys": [
+    {
+      "id": "home-to-product-engagement",
+      "surface": "home",
+      "decision": "approved-contract",
+      "userAction": "Official-site landing followed by Docs, Square, Atlas, pricing, or product engagement.",
+      "conversionValue": "qualified product navigation",
+      "privacyNotes": "No wallet, address, or authentication state is required."
+    },
+    {
+      "id": "docs-meaningful-navigation",
+      "surface": "docs",
+      "decision": "approved-contract",
+      "userAction": "Organic docs landing followed by meaningful documentation navigation or integration action.",
+      "conversionValue": "qualified documentation use",
+      "privacyNotes": "No private DAO, draft, wallet, or user profile data may be attached."
+    },
+    {
+      "id": "square-to-dao-discovery",
+      "surface": "square",
+      "decision": "approved-contract",
+      "userAction": "Square directory discovery followed by canonical DAO-site visit.",
+      "conversionValue": "DAO discovery click",
+      "privacyNotes": "DAO identity and target URL are allowed only when already public and canonical."
+    },
+    {
+      "id": "dao-proposal-read",
+      "surface": "dao-sites",
+      "decision": "approved-contract",
+      "userAction": "Organic, social, or AI landing on a DAO page followed by proposal directory or proposal read.",
+      "conversionValue": "proposal read",
+      "privacyNotes": "Do not include vote choice, wallet address, token balance, or proposal draft data."
+    },
+    {
+      "id": "proposal-to-governance-action",
+      "surface": "dao-sites",
+      "decision": "approved-conditional",
+      "userAction": "Proposal read followed by wallet connect or governance action intent.",
+      "conversionValue": "privacy-safe governance action intent",
+      "privacyNotes": "Measure only approved non-sensitive intent. Vote choice and wallet identity are prohibited unless separately approved and transformed for a lawful purpose."
+    },
+    {
+      "id": "atlas-to-source-navigation",
+      "surface": "atlas",
+      "decision": "approved-contract",
+      "userAction": "Atlas DAO or analysis page followed by canonical DAO site, source, proposal, or methodology click.",
+      "conversionValue": "source navigation",
+      "privacyNotes": "Do not profile private participants or include wallet/person identity."
+    },
+    {
+      "id": "ai-social-engaged-visit",
+      "surface": "cross-product",
+      "decision": "approved-contract",
+      "userAction": "AI/search-assistant or social referral followed by engaged visit or useful source navigation.",
+      "conversionValue": "qualified referred engagement",
+      "privacyNotes": "AI source classification requires observable referrer or campaign evidence."
+    }
+  ],
+  "crossDomainAttribution": {
+    "journeyDomains": [
+      "degov.ai",
+      "docs.degov.ai",
+      "square.degov.ai",
+      "atlas.degov.ai",
+      "representative DAO hosts from validated registry configuration"
+    ],
+    "propertyDecision": "Separate product properties or a shared property may be used only after owner and consent authority are recorded for each participating surface.",
+    "linkerDecision": "Cross-domain linker/session behavior is allowed only when lawful, technically appropriate, and approved by each product or DAO-domain owner.",
+    "referralExclusionDecision": "Referral exclusions may suppress self-referrals only when they preserve the original acquisition source and do not turn unknown traffic into a claimed channel.",
+    "customDaoDomainDecision": "Custom DAO domains remain separate ownership boundaries until explicit owner, consent, and retention authority are recorded.",
+    "optOutDecision": "Opt-out or consent state must not be silently propagated across products unless the ownership and consent basis are approved.",
+    "deduplicationDecision": "Conversions require deterministic event IDs or session-scoped dedupe rules before aggregation."
+  },
+  "eventContracts": [
+    {
+      "name": "degov_product_navigation",
+      "product": "home",
+      "userAction": "Click from official site to Docs, Square, Atlas, pricing, or product page.",
+      "triggeringCondition": "Rendered link activation by a user.",
+      "allowedParameters": [
+        "source_surface",
+        "target_surface",
+        "target_path_class",
+        "channel_group",
+        "locale"
+      ],
+      "prohibitedSensitiveParameters": [
+        "wallet_address",
+        "auth_state",
+        "full_query_string"
+      ],
+      "conversionStatus": "qualified-navigation",
+      "deduplication": "session plus target_surface plus target_path_class",
+      "consentRequirement": "analytics consent or approved aggregate-only mode",
+      "owner": "official-site owner",
+      "retention": "requires approved retention policy",
+      "testProcedure": "Debug event readback confirms allowed parameters only and no sensitive URL payload."
+    },
+    {
+      "name": "degov_docs_navigation",
+      "product": "docs",
+      "userAction": "Navigate from a priority docs page to another meaningful docs page, live example, or integration action.",
+      "triggeringCondition": "Rendered docs link activation or approved integration action.",
+      "allowedParameters": [
+        "source_surface",
+        "topic_id",
+        "target_path_class",
+        "channel_group",
+        "locale"
+      ],
+      "prohibitedSensitiveParameters": [
+        "private_dao_id",
+        "wallet_address",
+        "proposal_draft"
+      ],
+      "conversionStatus": "qualified-docs-use",
+      "deduplication": "session plus topic_id plus target_path_class",
+      "consentRequirement": "analytics consent or approved aggregate-only mode",
+      "owner": "docs owner",
+      "retention": "requires approved retention policy",
+      "testProcedure": "Debug event readback confirms topic mapping and no private payload."
+    },
+    {
+      "name": "degov_square_dao_click",
+      "product": "square",
+      "userAction": "Click from Square directory to a canonical DAO governance site.",
+      "triggeringCondition": "Rendered canonical DAO link activation.",
+      "allowedParameters": [
+        "source_surface",
+        "dao_slug_or_public_id",
+        "target_host_class",
+        "channel_group"
+      ],
+      "prohibitedSensitiveParameters": [
+        "wallet_address",
+        "user_profile",
+        "notification_destination"
+      ],
+      "conversionStatus": "dao-discovery",
+      "deduplication": "session plus dao_slug_or_public_id",
+      "consentRequirement": "analytics consent or approved aggregate-only mode",
+      "owner": "square owner",
+      "retention": "requires approved retention policy",
+      "testProcedure": "Debug event readback confirms canonical target and public DAO identifier only."
+    },
+    {
+      "name": "degov_proposal_read",
+      "product": "dao-sites",
+      "userAction": "View a public proposal detail page after landing or proposal-list navigation.",
+      "triggeringCondition": "Public proposal detail route renders successfully.",
+      "allowedParameters": [
+        "source_surface",
+        "dao_slug_or_public_id",
+        "proposal_public_id",
+        "channel_group",
+        "route_locale"
+      ],
+      "prohibitedSensitiveParameters": [
+        "wallet_address",
+        "vote_choice",
+        "token_balance",
+        "voting_power",
+        "proposal_draft",
+        "auth_state"
+      ],
+      "conversionStatus": "proposal-read",
+      "deduplication": "session plus dao_slug_or_public_id plus proposal_public_id",
+      "consentRequirement": "analytics consent or approved aggregate-only mode",
+      "owner": "dao-site owner",
+      "retention": "requires approved retention policy and DAO-domain owner boundary",
+      "testProcedure": "Debug event readback confirms public IDs only and no wallet/governance-sensitive payload."
+    },
+    {
+      "name": "degov_governance_action_intent",
+      "product": "dao-sites",
+      "userAction": "Privacy-safe wallet connect or governance action intent after proposal read.",
+      "triggeringCondition": "Approved intent action occurs after consent and without recording outcome details.",
+      "allowedParameters": [
+        "source_surface",
+        "dao_slug_or_public_id",
+        "proposal_public_id",
+        "action_type",
+        "channel_group"
+      ],
+      "prohibitedSensitiveParameters": [
+        "wallet_address",
+        "ens_identity",
+        "vote_choice",
+        "token_balance",
+        "voting_power",
+        "signature",
+        "auth_token"
+      ],
+      "conversionStatus": "conditional-conversion",
+      "deduplication": "session plus dao_slug_or_public_id plus proposal_public_id plus action_type",
+      "consentRequirement": "explicit analytics consent and owner approval required",
+      "owner": "dao-site owner",
+      "retention": "requires approved retention policy and privacy review",
+      "testProcedure": "Debug event readback confirms no wallet identity, no vote choice, and consent gating."
+    },
+    {
+      "name": "degov_atlas_source_click",
+      "product": "atlas",
+      "userAction": "Click from Atlas to a canonical DAO site, source, proposal, or methodology page.",
+      "triggeringCondition": "Rendered source or canonical link activation.",
+      "allowedParameters": [
+        "source_surface",
+        "target_type",
+        "dao_slug_or_public_id",
+        "channel_group"
+      ],
+      "prohibitedSensitiveParameters": [
+        "wallet_address",
+        "participant_profile",
+        "private_profile_state"
+      ],
+      "conversionStatus": "source-navigation",
+      "deduplication": "session plus target_type plus dao_slug_or_public_id",
+      "consentRequirement": "analytics consent or approved aggregate-only mode",
+      "owner": "atlas owner",
+      "retention": "requires approved retention policy",
+      "testProcedure": "Debug event readback confirms target classification and no participant profiling."
+    },
+    {
+      "name": "degov_referred_engaged_visit",
+      "product": "cross-product",
+      "userAction": "AI/search-assistant, social, or organic referred visit reaches an approved engaged-state threshold.",
+      "triggeringCondition": "Observable source channel plus approved engagement threshold.",
+      "allowedParameters": [
+        "landing_surface",
+        "channel_group",
+        "referrer_class",
+        "engagement_class",
+        "locale"
+      ],
+      "prohibitedSensitiveParameters": [
+        "full_referrer_url_with_sensitive_query",
+        "wallet_address",
+        "auth_state",
+        "private_query"
+      ],
+      "conversionStatus": "qualified-engagement",
+      "deduplication": "session plus landing_surface plus channel_group",
+      "consentRequirement": "analytics consent or approved aggregate-only mode",
+      "owner": "analytics owner",
+      "retention": "requires approved retention policy",
+      "testProcedure": "Debug event readback confirms direct/unknown is not reclassified as AI and query strings are stripped."
+    }
+  ],
+  "sensitiveExclusions": [
+    "wallet_address",
+    "ens_identity",
+    "vote_choice",
+    "token_balance",
+    "voting_power_linked_to_person",
+    "proposal_draft",
+    "unpublished_proposal_text",
+    "authentication_session_token",
+    "oauth_state",
+    "oauth_code",
+    "email",
+    "notification_destination",
+    "private_profile_value",
+    "settings_value",
+    "full_query_string_with_sensitive_values"
+  ],
+  "baselinePlan": {
+    "requiredBeforeInstrumentation": true,
+    "requiredInputs": [
+      "current analytics tags and properties by surface",
+      "current consent behavior by surface",
+      "current organic social referral channel definitions",
+      "cross-domain self-referral examples",
+      "missing or duplicate event observations",
+      "dated baseline owner"
+    ],
+    "storageRule": "Save the dated baseline in an approved issue, repository artifact, or measurement workspace before instrumentation changes.",
+    "analysisRule": "Compare event semantics, consent behavior, attribution preservation, and conversion quality. Do not treat total sessions, tag presence, or event volume as the success condition."
+  },
+  "repositoryFollowUps": [
+    {
+      "repository": "ringecosystem/degov-home",
+      "surface": "home",
+      "scope": "Map current official-site analytics/consent state and implement approved product-navigation events only after owner and retention approval.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov-docs",
+      "surface": "docs",
+      "scope": "Map docs analytics/consent state and implement approved meaningful-navigation events only after owner and retention approval.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov-square",
+      "surface": "square",
+      "scope": "Verify current GA property ownership and implement approved Square-to-DAO discovery events without private payloads.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov",
+      "surface": "dao-sites",
+      "scope": "Map registry DAO tag configuration, custom-domain ownership, consent behavior, and implement approved proposal-read or action-intent events without wallet/vote payloads.",
+      "issueRequired": true,
+      "blocksClose": true
+    },
+    {
+      "repository": "ringecosystem/degov-agent-api",
+      "surface": "atlas",
+      "scope": "Map Atlas analytics/consent state and implement approved source-navigation events without participant profiling.",
+      "issueRequired": true,
+      "blocksClose": true
+    }
+  ],
+  "reportContract": {
+    "qualifiedConversionDimensions": [
+      "landing_surface",
+      "channel_group",
+      "journey_id",
+      "conversion_status",
+      "consent_mode",
+      "owner_scope"
+    ],
+    "requiredReportEvidence": [
+      "event contract version",
+      "baseline date",
+      "rollout date",
+      "debug/readback evidence",
+      "known coverage gaps",
+      "privacy review state"
+    ],
+    "forbiddenSuccessClaims": [
+      "tag installed",
+      "total sessions increased",
+      "event volume increased",
+      "direct traffic assumed to be AI",
+      "wallet/vote data used as conversion proof"
+    ]
+  },
+  "validation": {
+    "ciChecks": [
+      "contract-json-parse",
+      "surface-inventory-coverage",
+      "channel-definition-coverage",
+      "candidate-journey-coverage",
+      "cross-domain-attribution-decisions",
+      "event-contract-completeness",
+      "sensitive-exclusion-coverage",
+      "baseline-plan-required",
+      "follow-up-blockers",
+      "report-contract-no-volume-only-success"
+    ],
+    "manualChecks": [
+      "analytics-tag-readback",
+      "consent-debug-readback",
+      "event-debug-mode-readback",
+      "cross-domain-attribution-test",
+      "sensitive-payload-inspection",
+      "qualified-conversion-report-readback"
+    ],
+    "releaseBlockingFailures": [
+      "wallet-address-in-event",
+      "vote-choice-in-event",
+      "token-balance-or-voting-power-in-event",
+      "auth-token-or-oauth-secret-in-event",
+      "private-profile-or-settings-in-event",
+      "full-sensitive-query-string-in-event",
+      "direct-unknown-inferred-as-ai",
+      "cross-domain-self-referral-erases-source",
+      "custom-dao-domain-measured-without-owner-approval",
+      "instrumentation-before-baseline",
+      "success-claim-based-only-on-sessions-tags-or-volume"
+    ],
+    "rollback": "Disable or revert the affected instrumentation if consent behavior, owner authority, event semantics, attribution preservation, or sensitive-payload exclusion cannot be proven. Keep the baseline record and #714 rationale intact."
+  }
+}
