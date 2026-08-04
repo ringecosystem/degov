@@ -1600,7 +1600,7 @@ async fn seed_rows(pool: &PgPool) -> Result<(), sqlx::Error> {
         r#"
         INSERT INTO degov_indexer_checkpoint (
           dao_code, chain_id, contract_set_id, stream_id, data_source_version, next_block, processed_height, target_height, updated_at
-        ) VALUES ('lisk-dao', 1135, $1, 'evm.logs', 'datalens', 901, 900, 1000, now())
+        ) VALUES ('lisk-dao', 1135, $1, 'datalens-native', 'datalens', 901, 900, 1000, now())
         "#,
     )
     .bind(CONTRACT_SET_ID)

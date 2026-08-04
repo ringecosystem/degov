@@ -16,6 +16,7 @@ test("block sync hook reads native indexer status", () => {
   assert.match(source, /latestProcessedHeight/);
   assert.match(source, /provisionalHeight/);
   assert.match(source, /processedBlock/);
+  assert.match(source, /usesProcessedHeight/);
   assert.match(source, /syncedPercentage/);
   assert.match(source, /refetchInterval:\s*CACHE_TIMES\.TWO_SECONDS/);
   assert.doesNotMatch(source, /refetchInterval:\s*CACHE_TIMES\.THIRTY_SECONDS/);

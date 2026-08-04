@@ -148,7 +148,6 @@ fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
             WHERE segment.contract_set_id = checkpoint.contract_set_id
               AND segment.chain_id = checkpoint.chain_id
               AND segment.dao_code = checkpoint.dao_code
-              AND segment.dataset_key = checkpoint.stream_id
               AND segment.segment_finality = 'safe_to_latest'
               AND segment.status = 'available'
           ) AS provisional_height,

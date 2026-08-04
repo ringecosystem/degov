@@ -37,17 +37,22 @@ export function useBlockSync() {
       indexerStatus?.provisionalHeight ??
       indexerStatus?.processedHeight
   );
+  const usesProcessedHeight = indexedBlock === processedBlock;
   const nativeSyncPercentage = indexerStatus?.syncedPercentage;
 
   const syncPercentage = useMemo(() => {
-    if (nativeSyncPercentage !== null && nativeSyncPercentage !== undefined) {
+    if (
+      usesProcessedHeight &&
+      nativeSyncPercentage !== null &&
+      nativeSyncPercentage !== undefined
+    ) {
       return Number(Number(nativeSyncPercentage).toFixed(1));
     }
 
     if (!currentBlock || !indexedBlock) return 0;
     const ratio = (indexedBlock / currentBlock) * 100;
     return Number(ratio.toFixed(1));
-  }, [currentBlock, indexedBlock, nativeSyncPercentage]);
+  }, [currentBlock, indexedBlock, nativeSyncPercentage, usesProcessedHeight]);
 
   const status: BlockSyncStatus = useMemo(() => {
     if (!indexedBlock) return "offline";

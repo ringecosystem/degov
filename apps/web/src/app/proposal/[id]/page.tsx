@@ -14,7 +14,7 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
   const config = await getActiveDaoConfig();
   const { proposal, invalidId, failed } = await getPublicProposalDetail(config, id);
 
-  if (invalidId) {
+  if (invalidId || (!failed && !proposal)) {
     notFound();
   }
 
