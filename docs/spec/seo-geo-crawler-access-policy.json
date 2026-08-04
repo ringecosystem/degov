@@ -1012,6 +1012,7 @@
       "userAgent",
       "crawlerPurpose",
       "identityVerification",
+      "observationState",
       "wafAction",
       "cacheResult",
       "count",
@@ -1028,7 +1029,8 @@
       "blocked",
       "challenged",
       "failed",
-      "not-observed"
+      "not-observed",
+      "access-gap"
     ],
     "rule": "Do not report a policy as implemented from a User-Agent string alone. Every public claim must include host, purpose, identity state, outcome state, owner, observation window, and evidence link."
   },

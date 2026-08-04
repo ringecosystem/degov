@@ -198,6 +198,7 @@ const requiredLogFields = new Set([
   "userAgent",
   "crawlerPurpose",
   "identityVerification",
+  "observationState",
   "wafAction",
   "cacheResult",
   "count",
@@ -215,6 +216,7 @@ const requiredAccessOutcomeStates = new Set([
   "challenged",
   "failed",
   "not-observed",
+  "access-gap",
 ]);
 
 assert.equal(policy.version, 1);
