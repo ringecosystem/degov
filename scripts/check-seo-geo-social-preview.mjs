@@ -246,6 +246,10 @@ assert.ok(
 );
 for (const regression of contract.regressionFixtures) {
   assert.match(regression.fixtureUrl, /^https:\/\//);
+  assert.ok(
+    contract.automatedValidation.releaseBlockingFailures.includes(regression.failureClass),
+    `${regression.id} failureClass must map to a release-blocking failure`
+  );
   assert.ok(regression.expectedRule.length > 60);
 }
 

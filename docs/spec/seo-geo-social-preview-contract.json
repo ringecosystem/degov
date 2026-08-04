@@ -264,7 +264,7 @@
       "surface": "dao-sites",
       "repository": "ringecosystem/degov",
       "fixtureUrl": "https://demo.degov.ai/",
-      "failureClass": "wrong-host-canonical-or-og-url",
+      "failureClass": "wrong-host-canonical-og-or-image-url",
       "expectedRule": "canonical, og:url, twitter URL, and image URLs must use the validated DAO production siteUrl, never a development Vercel origin or request-host fallback."
     },
     {
@@ -272,7 +272,7 @@
       "surface": "dao-sites",
       "repository": "ringecosystem/degov",
       "fixtureUrl": "https://demo.degov.ai/proposals/new",
-      "failureClass": "private-route-convincing-public-preview",
+      "failureClass": "private-route-rich-public-card",
       "expectedRule": "Private, write, editor, profile-edit, OAuth, notification, and authenticated routes must not emit rich public cards that imply indexable public content."
     }
   ],
