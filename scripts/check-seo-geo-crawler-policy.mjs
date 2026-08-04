@@ -60,6 +60,7 @@ const evidenceStates = new Set([
   "known-fail",
 ]);
 const robotsStates = new Set(["observed", "known-gap", "known-fail", "mixed"]);
+const cdnWafStates = new Set(["observed", "not-observed", "access-gap", "known-gap"]);
 const robotsOutcomes = new Set(["allowed", "blocked", "mixed", "gap", "not-observed"]);
 const edgeOutcomes = new Set(["allowed", "blocked", "challenged", "failed", "not-observed", "access-gap"]);
 const sourceTypes = new Set([
@@ -439,9 +440,13 @@ for (const behavior of policy.currentProductionBehavior) {
   assert.ok(behavior.publicRobots.contentType.length > 3, `${behavior.surface} contentType`);
   assert.ok(behavior.publicRobots.summary.length > 30, `${behavior.surface} robots summary`);
   assert.ok(behavior.cdnWaf, `${behavior.surface} cdnWaf`);
-  assert.equal(behavior.cdnWaf.state, "access-gap", `${behavior.surface} cdnWaf state`);
+  assert.ok(cdnWafStates.has(behavior.cdnWaf.state), `${behavior.surface} cdnWaf state`);
   assert.ok(behavior.cdnWaf.ownerRole.length > 3, `${behavior.surface} cdnWaf ownerRole`);
-  assert.match(behavior.cdnWaf.requiredAction, /aggregate verified-bot outcomes/);
+  if (behavior.cdnWaf.state === "access-gap") {
+    assert.match(behavior.cdnWaf.requiredAction, /aggregate verified-bot outcomes/);
+  } else {
+    assert.match(behavior.cdnWaf.evidenceBasis, /verified-bot|aggregate|edge/i);
+  }
   assert.ok(behavior.authState.length > 5, `${behavior.surface} authState`);
   assert.ok(Array.isArray(behavior.purposeOutcomes), `${behavior.surface} purposeOutcomes`);
   assert.equal(
