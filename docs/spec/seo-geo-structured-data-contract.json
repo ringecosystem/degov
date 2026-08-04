@@ -1,0 +1,600 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1028",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/seo-geo-structured-data-contract.json",
+    "localCheck": "pnpm run test:seo-geo-structured-data",
+    "changeRule": "A structured-data mapping, entity identity rule, approval state, or completion claim may change only with an owner issue, source URL, visible-content evidence, validation plan, rollback path, and #714-linked rationale."
+  },
+  "sourcePolicy": {
+    "googleStructuredDataIntro": "https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data",
+    "googleStructuredDataGeneralGuidelines": "https://developers.google.com/search/docs/appearance/structured-data/sd-policies",
+    "googleSupportedGallery": "https://developers.google.com/search/docs/appearance/structured-data/search-gallery",
+    "googleBreadcrumb": "https://developers.google.com/search/docs/appearance/structured-data/breadcrumb",
+    "googleArticle": "https://developers.google.com/search/docs/appearance/structured-data/article",
+    "googleProfilePage": "https://developers.google.com/search/docs/appearance/structured-data/profile-page",
+    "googleFaqChange": "https://developers.google.com/search/blog/2023/08/howto-faq-changes",
+    "schemaOrganization": "https://schema.org/Organization",
+    "schemaWebSite": "https://schema.org/WebSite",
+    "schemaWebPage": "https://schema.org/WebPage",
+    "schemaCollectionPage": "https://schema.org/CollectionPage",
+    "schemaItemList": "https://schema.org/ItemList",
+    "schemaCreativeWork": "https://schema.org/CreativeWork",
+    "schemaDataset": "https://schema.org/Dataset",
+    "sourceUseRule": "Use Google Search feature documentation to decide rich-result eligibility, and schema.org semantics to decide whether a type accurately describes visible page content. Schema existence alone is not approval."
+  },
+  "entityIdentity": {
+    "publisher": {
+      "id": "degov-publisher",
+      "type": "Organization",
+      "stableAtId": "https://degov.ai/#organization",
+      "canonicalUrl": "https://degov.ai/",
+      "name": "DeGov",
+      "sameAsPolicy": "Only verified official DeGov-controlled profiles and product URLs may be included. Do not add community mirrors, unverified social profiles, or DAO-specific links to the publisher identity.",
+      "surfaces": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ]
+    },
+    "website": {
+      "id": "degov-website",
+      "type": "WebSite",
+      "stableAtId": "https://degov.ai/#website",
+      "canonicalUrl": "https://degov.ai/",
+      "publisherAtId": "https://degov.ai/#organization"
+    },
+    "daoEntityRule": {
+      "type": "Organization",
+      "stableAtIdPattern": "<dao.siteUrl>/#organization",
+      "canonicalUrlPattern": "<dao.siteUrl>/",
+      "sameAsPolicy": "Use only DAO official URLs verified from approved registry/configuration data and visible on the public DAO page. Do not include user-submitted, unverified, private, or stale links.",
+      "hostIsolationRule": "The DAO @id, url, logo, sameAs links, and JSON-LD entity facts must come from the active validated DAO configuration, never from the request Host header alone or another DAO cache entry.",
+      "visibleContentRule": "DAO name, logo/image when used, description, canonical URL, and official links must be visible on the page or directly cited by visible page content."
+    },
+    "urlAgreementRule": "For each approved public page, JSON-LD url/mainEntityOfPage, HTML canonical, og:url, and sitemap URL must agree on the validated production origin and canonical path.",
+    "localeRule": "Localized names, descriptions, and inLanguage values may be emitted only when the visible localized page content is available and uses the same canonical/alternate strategy as the route contract."
+  },
+  "pageClassDecisions": [
+    {
+      "id": "home.root",
+      "surface": "home",
+      "repository": "ringecosystem/degov-home",
+      "candidateTypes": [
+        "Organization",
+        "WebSite"
+      ],
+      "decision": "approved-existing-recheck-required",
+      "rationale": "The official homepage is the canonical product/publisher surface and already has an Organization/WebSite implementation to recheck against the shared identity contract.",
+      "googleSupportedFeature": "organization-and-site-understanding",
+      "schemaSemanticFit": "direct",
+      "requiredVisibleEvidence": [
+        "DeGov product identity",
+        "canonical homepage URL",
+        "publisher name",
+        "public logo or image when used",
+        "official product links"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "@id",
+        "name",
+        "url",
+        "publisher"
+      ],
+      "forbiddenProperties": [
+        "aggregateRating",
+        "review",
+        "fakeFoundingDate",
+        "unverifiedSameAs"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "stable-at-id",
+        "canonical-jsonld-url-agreement",
+        "visible-content-comparison",
+        "deployed-raw-html-readback"
+      ],
+      "rollback": "Remove or revert the homepage JSON-LD block if identity, canonical, or visible-content agreement fails."
+    },
+    {
+      "id": "home.pricing-content",
+      "surface": "home",
+      "repository": "ringecosystem/degov-home",
+      "candidateTypes": [
+        "WebPage"
+      ],
+      "decision": "approved-conditional",
+      "rationale": "Generic WebPage markup can describe visible pricing/content pages without claiming a richer unsupported product or FAQ result.",
+      "googleSupportedFeature": "not-rich-result-specific",
+      "schemaSemanticFit": "direct",
+      "requiredVisibleEvidence": [
+        "visible page title",
+        "canonical URL",
+        "publisher identity",
+        "content description"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "@id",
+        "url",
+        "name",
+        "isPartOf",
+        "publisher"
+      ],
+      "forbiddenProperties": [
+        "Offer",
+        "Product",
+        "FAQPage-with-hidden-questions",
+        "fakeReview"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "canonical-jsonld-url-agreement",
+        "visible-content-comparison"
+      ],
+      "rollback": "Fall back to no route-level JSON-LD if pricing facts, visible content, or supported-type requirements are not stable."
+    },
+    {
+      "id": "docs.breadcrumb",
+      "surface": "docs",
+      "repository": "ringecosystem/degov-docs",
+      "candidateTypes": [
+        "BreadcrumbList"
+      ],
+      "decision": "approved-conditional",
+      "rationale": "BreadcrumbList is appropriate only when the docs page exposes visible canonical breadcrumbs.",
+      "googleSupportedFeature": "breadcrumb",
+      "schemaSemanticFit": "direct",
+      "requiredVisibleEvidence": [
+        "visible breadcrumb trail",
+        "canonical docs URL",
+        "breadcrumb item names",
+        "breadcrumb item URLs"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "itemListElement",
+        "position",
+        "name",
+        "item"
+      ],
+      "forbiddenProperties": [
+        "breadcrumb-to-wrong-host",
+        "hidden-breadcrumb-only"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "breadcrumb-visible-content-comparison",
+        "canonical-jsonld-url-agreement",
+        "google-rich-results-test"
+      ],
+      "rollback": "Disable BreadcrumbList for docs pages whose visible breadcrumb or canonical host cannot be proven."
+    },
+    {
+      "id": "docs.article",
+      "surface": "docs",
+      "repository": "ringecosystem/degov-docs",
+      "candidateTypes": [
+        "Article",
+        "TechArticle"
+      ],
+      "decision": "deferred",
+      "rationale": "Docs article markup needs real author, review/update dates, publisher, headline, and article body evidence; build dates must not be used as freshness.",
+      "googleSupportedFeature": "article",
+      "schemaSemanticFit": "conditional",
+      "requiredVisibleEvidence": [
+        "visible headline",
+        "visible author or accountable publisher",
+        "real datePublished or dateModified",
+        "article body",
+        "canonical docs URL"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "headline",
+        "author",
+        "publisher",
+        "datePublished-or-dateModified",
+        "mainEntityOfPage"
+      ],
+      "forbiddenProperties": [
+        "build-date-as-dateModified",
+        "fake-author",
+        "hidden-review-date"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "visible-date-author-comparison",
+        "google-rich-results-test"
+      ],
+      "rollback": "Do not emit Article/TechArticle until editorial authorship and date semantics are approved."
+    },
+    {
+      "id": "square.directory",
+      "surface": "square",
+      "repository": "ringecosystem/degov-square",
+      "candidateTypes": [
+        "WebSite",
+        "CollectionPage",
+        "ItemList"
+      ],
+      "decision": "approved-conditional",
+      "rationale": "The Square directory can be a CollectionPage/ItemList only when DAO items and links are present in initial visible HTML.",
+      "googleSupportedFeature": "not-rich-result-specific",
+      "schemaSemanticFit": "conditional",
+      "requiredVisibleEvidence": [
+        "visible directory title",
+        "visible DAO item names",
+        "visible DAO canonical links",
+        "canonical Square URL"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "@id",
+        "url",
+        "name",
+        "mainEntity",
+        "itemListElement"
+      ],
+      "forbiddenProperties": [
+        "hidden-directory-items",
+        "unverified-dao-links",
+        "client-only-items-with-jsonld"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "visible-itemlist-comparison",
+        "canonical-jsonld-url-agreement",
+        "deployed-raw-html-readback"
+      ],
+      "rollback": "Remove ItemList markup if directory items are not server-readable or canonical DAO links cannot be verified."
+    },
+    {
+      "id": "dao.home",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "candidateTypes": [
+        "Organization"
+      ],
+      "decision": "approved-conditional",
+      "rationale": "A public DAO homepage may describe the DAO as an Organization when identity facts are visible and host-isolated.",
+      "googleSupportedFeature": "organization-and-entity-understanding",
+      "schemaSemanticFit": "direct",
+      "requiredVisibleEvidence": [
+        "visible DAO name",
+        "visible DAO description or governance context",
+        "canonical DAO homepage",
+        "verified official DAO links when sameAs is emitted",
+        "visible logo or image when image is emitted"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "@id",
+        "name",
+        "url",
+        "mainEntityOfPage"
+      ],
+      "forbiddenProperties": [
+        "unverifiedSameAs",
+        "cross-dao-identity",
+        "hidden-contract-facts",
+        "wallet-or-profile-data"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "host-isolation",
+        "visible-content-comparison",
+        "canonical-jsonld-url-agreement",
+        "two-dao-fixture-test"
+      ],
+      "rollback": "Disable DAO Organization markup for the affected route if configuration, canonical, sameAs, or cache isolation fails."
+    },
+    {
+      "id": "dao.proposal-detail",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "candidateTypes": [
+        "WebPage",
+        "CreativeWork"
+      ],
+      "decision": "approved-conditional",
+      "rationale": "Proposal detail pages may use generic page/creative-work semantics, but must not be misclassified as Article, Legislation, NewsArticle, or DiscussionForumPosting by default.",
+      "googleSupportedFeature": "not-rich-result-specific",
+      "schemaSemanticFit": "conditional",
+      "requiredVisibleEvidence": [
+        "visible proposal title",
+        "visible proposal canonical URL",
+        "visible DAO identity",
+        "visible proposal source or identifier",
+        "visible data-as-of or source freshness when emitted"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "@id",
+        "url",
+        "name",
+        "isPartOf",
+        "about"
+      ],
+      "forbiddenProperties": [
+        "Article",
+        "NewsArticle",
+        "Legislation",
+        "DiscussionForumPosting",
+        "fake-author",
+        "vote-choice-user-data"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "proposal-visible-content-comparison",
+        "metadata-jsonld-entity-agreement",
+        "invalid-route-no-jsonld"
+      ],
+      "rollback": "Fall back to no proposal JSON-LD if proposal visibility, source, or entity alignment cannot be proven."
+    },
+    {
+      "id": "atlas.dao-detail",
+      "surface": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "candidateTypes": [
+        "Organization",
+        "BreadcrumbList"
+      ],
+      "decision": "approved-conditional",
+      "rationale": "Atlas DAO detail pages can describe the visible DAO entity and breadcrumb context when the canonical Atlas route and DAO identity are stable.",
+      "googleSupportedFeature": "breadcrumb-plus-entity-understanding",
+      "schemaSemanticFit": "direct",
+      "requiredVisibleEvidence": [
+        "visible DAO name",
+        "visible Atlas DAO canonical URL",
+        "visible breadcrumb trail",
+        "visible source/freshness context when emitted"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "@id",
+        "name",
+        "url",
+        "mainEntityOfPage",
+        "itemListElement"
+      ],
+      "forbiddenProperties": [
+        "dataset-without-license",
+        "hidden-dao-facts",
+        "unverifiedSameAs"
+      ],
+      "validation": [
+        "json-ld-parse",
+        "visible-content-comparison",
+        "breadcrumb-visible-content-comparison",
+        "canonical-jsonld-url-agreement"
+      ],
+      "rollback": "Remove Atlas DAO JSON-LD if the visible DAO entity, breadcrumb, or canonical route cannot be proven."
+    },
+    {
+      "id": "atlas.participant-profile",
+      "surface": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "candidateTypes": [
+        "ProfilePage"
+      ],
+      "decision": "deferred",
+      "rationale": "ProfilePage requires an approved public participant/profile indexing policy and privacy review before describing people or organizations.",
+      "googleSupportedFeature": "profile-page",
+      "schemaSemanticFit": "conditional",
+      "requiredVisibleEvidence": [
+        "approved public profile route",
+        "visible profile identity",
+        "privacy-safe public value",
+        "consent/index policy",
+        "no private wallet/governance payload"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "mainEntity",
+        "name-or-alternateName"
+      ],
+      "forbiddenProperties": [
+        "private-wallet-profile",
+        "vote-choice",
+        "token-balance-linked-to-person",
+        "unapprovedSameAs"
+      ],
+      "validation": [
+        "privacy-review-link",
+        "index-policy-link",
+        "visible-content-comparison",
+        "private-route-no-jsonld"
+      ],
+      "rollback": "Do not emit ProfilePage until profile privacy, public value, and index policy are approved."
+    },
+    {
+      "id": "atlas.dataset",
+      "surface": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "candidateTypes": [
+        "Dataset"
+      ],
+      "decision": "deferred",
+      "rationale": "Dataset markup requires a real dataset landing page and explicit license, creator, distribution/access, and provenance contract.",
+      "googleSupportedFeature": "dataset",
+      "schemaSemanticFit": "conditional",
+      "requiredVisibleEvidence": [
+        "dataset landing page",
+        "visible license",
+        "visible creator/publisher",
+        "distribution or access method",
+        "provenance and data freshness",
+        "methodology"
+      ],
+      "requiredProperties": [
+        "@context",
+        "@type",
+        "name",
+        "description",
+        "license",
+        "creator",
+        "distribution-or-access",
+        "isBasedOn-or-measurementTechnique"
+      ],
+      "forbiddenProperties": [
+        "dataset-without-license",
+        "dataset-without-provenance",
+        "api-response-as-dataset-without-landing-page",
+        "fake-freshness"
+      ],
+      "validation": [
+        "dataset-contract-link",
+        "visible-license-comparison",
+        "distribution-fetch-check",
+        "provenance-review"
+      ],
+      "rollback": "Do not emit Dataset until Atlas has an approved dataset product contract."
+    }
+  ],
+  "explicitRejections": [
+    {
+      "id": "proposal-as-news-article",
+      "rejectedTypes": [
+        "Article",
+        "NewsArticle",
+        "BlogPosting",
+        "DiscussionForumPosting",
+        "Legislation"
+      ],
+      "reason": "A governance proposal page is not automatically editorial journalism, a forum thread, or legislation. Use only a generic page/creative-work mapping unless visible content and product semantics justify a narrower type."
+    },
+    {
+      "id": "faq-growth-strategy",
+      "rejectedTypes": [
+        "FAQPage"
+      ],
+      "reason": "FAQ markup is not a growth KPI and must not be added unless the FAQ content is visible and appropriate; Google FAQ rich results are restricted and should not drive bulk FAQ expansion."
+    },
+    {
+      "id": "ratings-reviews-fake-freshness",
+      "rejectedTypes": [
+        "AggregateRating",
+        "Review",
+        "fakeDateModified"
+      ],
+      "reason": "Ratings, reviews, authors, and freshness dates must not be invented or derived from build/deploy time."
+    },
+    {
+      "id": "participant-profile-before-policy",
+      "rejectedTypes": [
+        "ProfilePage"
+      ],
+      "reason": "Participant or profile markup is blocked until privacy, public value, and indexability policies are approved."
+    }
+  ],
+  "validationModel": {
+    "ciChecks": [
+      "json-ld-parse",
+      "required-property-shape",
+      "stable-at-id",
+      "canonical-jsonld-url-agreement",
+      "visible-content-comparison",
+      "invalid-private-no-jsonld",
+      "host-isolation",
+      "safe-json-serialization"
+    ],
+    "manualChecks": [
+      "schema-org-validator",
+      "google-rich-results-test-for-supported-types",
+      "search-console-enhancement-report-when-available",
+      "deployed-raw-html-readback"
+    ],
+    "releaseBlockingFailures": [
+      "malformed-json-ld",
+      "wrong-host-jsonld-url",
+      "jsonld-canonical-og-url-mismatch",
+      "hidden-or-fabricated-fact",
+      "invalid-private-or-noindex-page-jsonld",
+      "cross-dao-entity-contamination",
+      "unsafe-json-serialization",
+      "misleading-rich-result-type",
+      "build-date-as-content-date",
+      "unverified-same-as",
+      "dataset-without-contract",
+      "profile-without-privacy-policy"
+    ],
+    "informationalOnly": [
+      "rich-result-not-shown",
+      "external-ranking-change",
+      "schema-count",
+      "ai-citation-frequency"
+    ],
+    "rollbackProcedure": "Remove or disable the affected JSON-LD block, preserve canonical/meta behavior, record the failure class and affected route, and link the rollback evidence to the owner issue and #714."
+  },
+  "repositoryFollowUps": [
+    {
+      "repository": "ringecosystem/degov-home",
+      "approvedScopes": [
+        "home.root",
+        "home.pricing-content"
+      ],
+      "status": "implementation-issue-required-after-contract",
+      "scope": "Recheck existing Organization/WebSite JSON-LD after home PR #31, align @id with the shared publisher identity, and add only visible-content-backed WebPage markup for approved content pages."
+    },
+    {
+      "repository": "ringecosystem/degov-docs",
+      "approvedScopes": [
+        "docs.breadcrumb"
+      ],
+      "status": "implementation-issue-required-after-contract",
+      "scope": "Add visible-breadcrumb-backed BreadcrumbList markup; defer Article/TechArticle until authorship and real date semantics exist."
+    },
+    {
+      "repository": "ringecosystem/degov-square",
+      "approvedScopes": [
+        "square.directory"
+      ],
+      "status": "implementation-issue-required-after-contract",
+      "scope": "Add CollectionPage/ItemList only when DAO directory items and canonical links are present in initial visible HTML."
+    },
+    {
+      "repository": "ringecosystem/degov",
+      "approvedScopes": [
+        "dao.home",
+        "dao.proposal-detail"
+      ],
+      "status": "implementation-issue-required-after-contract",
+      "scope": "Add host-isolated DAO Organization markup and optional generic proposal page/CreativeWork markup with invalid/private route exclusion."
+    },
+    {
+      "repository": "ringecosystem/degov-agent-api",
+      "approvedScopes": [
+        "atlas.dao-detail"
+      ],
+      "status": "implementation-issue-required-after-contract",
+      "scope": "Add Atlas DAO Organization/BreadcrumbList markup; defer ProfilePage and Dataset until privacy and dataset contracts are approved."
+    }
+  ],
+  "completionState": {
+    "contractApproved": false,
+    "contractApprovalEvidence": [],
+    "implementationIssuesLinked": false,
+    "implementationIssueLinks": [],
+    "officialSiteRecheckComplete": false,
+    "officialSiteRecheckEvidence": [],
+    "validatorEvidenceComplete": false,
+    "validatorEvidenceRecords": [],
+    "closeIssueWhen": "The shared entity contract is approved, repository-specific implementation issues are linked for approved mappings, official-site JSON-LD is rechecked after degov-home PR #31, validator/readback evidence exists for implemented mappings, and #714 has the final evidence summary."
+  }
+}
