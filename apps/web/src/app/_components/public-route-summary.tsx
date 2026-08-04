@@ -80,27 +80,12 @@ export function ProposalDirectoryPublicSummary({
 export function ProposalDetailPublicSummary({
   config,
   proposal,
-  proposalId,
-  invalidId,
   failed,
 }: {
   config: Config;
   proposal?: ProposalItem;
-  proposalId: string;
-  invalidId: boolean;
   failed: boolean;
 }) {
-  if (invalidId) {
-    return (
-      <section className="rounded-[14px] bg-card p-[20px] shadow-card">
-        <h1 className="text-[26px] font-extrabold">Proposal not found</h1>
-        <p className="mt-[10px] text-[14px] text-muted-foreground">
-          {proposalId} is not a valid proposal identifier for {config.name}.
-        </p>
-      </section>
-    );
-  }
-
   if (failed) {
     return (
       <section className="rounded-[14px] bg-card p-[20px] shadow-card">

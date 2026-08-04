@@ -563,7 +563,7 @@ const fetchIndexerStatusWithQuery = async (endpoint: string, query: string) => {
 export const indexerStatusService = {
   getIndexerStatus: async (endpoint: string) => {
     const cachedVariant = indexerStatusQueryVariantByEndpoint.get(endpoint);
-    const variants = cachedVariant
+    const variants = cachedVariant && cachedVariant !== "base"
       ? [
           ...indexerStatusQueryVariants.filter(
             (variant) => variant.key === cachedVariant
@@ -580,7 +580,9 @@ export const indexerStatusService = {
           endpoint,
           variant.query
         );
-        indexerStatusQueryVariantByEndpoint.set(endpoint, variant.key);
+        if (variant.key !== "base") {
+          indexerStatusQueryVariantByEndpoint.set(endpoint, variant.key);
+        }
         return indexerStatus;
       } catch (error) {
         if (

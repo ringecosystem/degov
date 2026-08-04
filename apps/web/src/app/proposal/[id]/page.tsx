@@ -23,8 +23,6 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
       <ProposalDetailPublicSummary
         config={config}
         proposal={proposal}
-        proposalId={id}
-        invalidId={invalidId}
         failed={failed}
       />
       <ProposalDetailClient />

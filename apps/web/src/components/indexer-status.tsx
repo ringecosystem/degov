@@ -45,6 +45,7 @@ export function IndexerStatus({
   const confirmedSafeHeight = t("confirmedSafeHeight", {
     processedBlock: processedBlock.toLocaleString(),
   });
+  const showConfirmedSafeHeight = processedBlock > 0;
 
   return (
     <div className="flex flex-col gap-[16px]">
@@ -92,7 +93,7 @@ export function IndexerStatus({
         >
           <div className="flex flex-col gap-[4px]">
             <span>{hoverMessage}</span>
-            <span>{confirmedSafeHeight}</span>
+            {showConfirmedSafeHeight ? <span>{confirmedSafeHeight}</span> : null}
           </div>
         </TooltipContent>
       </Tooltip>
