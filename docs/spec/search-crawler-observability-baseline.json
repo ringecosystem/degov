@@ -282,7 +282,8 @@
     },
     {
       "id": "model-training",
-      "examples": ["GPTBot", "ClaudeBot", "Google-Extended"],
+      "examples": ["GPTBot", "ClaudeBot"],
+      "policyTokens": ["Google-Extended"],
       "expectedTreatment": "Observed access must be compared with the separate crawler policy issue before changing allow/deny behavior."
     },
     {

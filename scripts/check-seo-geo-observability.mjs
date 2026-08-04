@@ -193,6 +193,7 @@ for (const surface of contract.surfaceGroups) {
   assert.ok(accessStates.has(surface.analytics.accessState));
   assert.ok(accessStates.has(surface.logs.accessState));
   assert.ok(Array.isArray(surface.searchConsole.requiredEvidence));
+  assert.ok(Array.isArray(surface.bingWebmaster.requiredEvidence));
   assert.ok(surface.searchConsole.requiredEvidence.includes("ownership-state"));
   assert.ok(surface.searchConsole.requiredEvidence.includes("sitemap-processing"));
   assert.ok(surface.bingWebmaster.requiredEvidence.includes("ai-performance-availability"));
@@ -294,8 +295,13 @@ for (const purposeId of requiredCrawlerPurposes) {
 for (const purpose of contract.crawlerPurposes) {
   assert.ok(Array.isArray(purpose.examples));
   assert.ok(purpose.examples.length > 0);
+  assert.ok(!purpose.examples.includes("Google-Extended"));
   assert.ok(purpose.expectedTreatment.length > 20);
 }
+const modelTrainingPurpose = contract.crawlerPurposes.find(
+  (purpose) => purpose.id === "model-training"
+);
+assert.ok(modelTrainingPurpose.policyTokens.includes("Google-Extended"));
 
 const annotationEvents = new Set(contract.changeAnnotationModel.requiredEvents);
 for (const event of requiredAnnotationEvents) {
