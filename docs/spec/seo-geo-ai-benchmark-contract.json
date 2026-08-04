@@ -1,0 +1,410 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1030",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/seo-geo-ai-benchmark-contract.json",
+    "localCheck": "pnpm run test:seo-geo-ai-benchmark",
+    "changeRule": "A query, expected claim, source URL, provider, run metadata field, scoring dimension, experiment template, privacy rule, baseline claim, result claim, or completion claim may change only with an owner issue, raw evidence location, evaluator notes, and #714-linked rationale.",
+    "closeIssueWhen": "The benchmark contract is approved, raw evidence storage is approved, at least one repeated baseline run is completed, Bing AI Performance is reported separately when available, recurring results are linked to #714, and no report collapses the dimensions into a single GEO score."
+  },
+  "sourcePolicy": {
+    "contentProvenanceContract": "docs/spec/seo-geo-content-provenance-contract.json",
+    "measurementContract": "docs/spec/seo-geo-measurement-contract.json",
+    "observabilityBaseline": "docs/spec/search-crawler-observability-baseline.json",
+    "sourceUseRule": "Benchmark expected answers must point to canonical DeGov or primary source URLs. A citation is useful only when it supports the adjacent claim; a DeGov URL is not automatically a good citation."
+  },
+  "querySet": [
+    {
+      "id": "branded.what-is-degov",
+      "cohort": "branded-product-understanding",
+      "query": "What is DeGov?",
+      "locale": "en-US",
+      "expectedClaims": [
+        "degov-product-purpose",
+        "target-users",
+        "product-boundaries"
+      ],
+      "authoritativeUrls": [
+        "https://degov.ai/",
+        "https://docs.degov.ai/"
+      ],
+      "avoidForcedMention": false
+    },
+    {
+      "id": "branded.products",
+      "cohort": "branded-product-understanding",
+      "query": "What are DeGov Square and DeGov Atlas?",
+      "locale": "en-US",
+      "expectedClaims": [
+        "surface-purpose",
+        "cross-product-navigation",
+        "source-coverage"
+      ],
+      "authoritativeUrls": [
+        "https://square.degov.ai/",
+        "https://atlas.degov.ai/",
+        "https://degov.ai/"
+      ],
+      "avoidForcedMention": false
+    },
+    {
+      "id": "workflow.governance-platform-capabilities",
+      "cohort": "category-and-workflow",
+      "query": "What capabilities should a DAO governance platform provide?",
+      "locale": "en-US",
+      "expectedClaims": [
+        "governance-model",
+        "proposal-state",
+        "vote-method",
+        "delegation"
+      ],
+      "authoritativeUrls": [
+        "https://docs.degov.ai/"
+      ],
+      "avoidForcedMention": true
+    },
+    {
+      "id": "workflow.proposal-lifecycle",
+      "cohort": "category-and-workflow",
+      "query": "How do proposal lifecycle, voting, delegation, quorum, and timelock concepts work in DeGov?",
+      "locale": "en-US",
+      "expectedClaims": [
+        "proposal-state",
+        "vote-method",
+        "delegation",
+        "quorum",
+        "timelock"
+      ],
+      "authoritativeUrls": [
+        "https://docs.degov.ai/",
+        "https://demo.degov.ai/"
+      ],
+      "avoidForcedMention": false
+    },
+    {
+      "id": "workflow.supported-chains",
+      "cohort": "category-and-workflow",
+      "query": "Which chains and governance models does DeGov support?",
+      "locale": "en-US",
+      "expectedClaims": [
+        "supported-chain",
+        "governance-model",
+        "deployment-configuration"
+      ],
+      "authoritativeUrls": [
+        "https://docs.degov.ai/"
+      ],
+      "avoidForcedMention": false
+    },
+    {
+      "id": "workflow.indexing-delay",
+      "cohort": "category-and-workflow",
+      "query": "How does DeGov index governance data and what does indexing delay mean?",
+      "locale": "en-US",
+      "expectedClaims": [
+        "indexer-source",
+        "indexing-lag",
+        "sync-status",
+        "data-as-of"
+      ],
+      "authoritativeUrls": [
+        "https://docs.degov.ai/",
+        "https://demo.degov.ai/"
+      ],
+      "avoidForcedMention": false
+    },
+    {
+      "id": "entity.canonical-dao-site",
+      "cohort": "entity-discovery",
+      "query": "Find the canonical governance site for DeGov Demo DAO at demo.degov.ai.",
+      "locale": "en-US",
+      "expectedClaims": [
+        "dao-identity",
+        "official-dao-link",
+        "chain",
+        "contract"
+      ],
+      "authoritativeUrls": [
+        "https://square.degov.ai/",
+        "https://demo.degov.ai/"
+      ],
+      "avoidForcedMention": false
+    },
+    {
+      "id": "evidence.proposal-explanation",
+      "cohort": "evidence-and-comparison",
+      "query": "Explain the baseline-selected proposal on demo.degov.ai using primary sources.",
+      "locale": "en-US",
+      "expectedClaims": [
+        "proposal-state",
+        "proposal-source",
+        "data-as-of"
+      ],
+      "authoritativeUrls": [
+        "https://demo.degov.ai/"
+      ],
+      "avoidForcedMention": false
+    },
+    {
+      "id": "evidence.objective-comparison",
+      "cohort": "evidence-and-comparison",
+      "query": "Compare DeGov with Snapshot or Tally where a factual sourced comparison is possible.",
+      "locale": "en-US",
+      "expectedClaims": [
+        "comparison-scope",
+        "feature-evidence",
+        "unsupported-claim-boundary"
+      ],
+      "authoritativeUrls": [
+        "https://docs.degov.ai/",
+        "https://degov.ai/"
+      ],
+      "avoidForcedMention": true
+    },
+    {
+      "id": "evidence.atlas-methodology",
+      "cohort": "evidence-and-comparison",
+      "query": "What are the sources, freshness, and limitations of DeGov Atlas metrics?",
+      "locale": "en-US",
+      "expectedClaims": [
+        "source-coverage",
+        "methodology",
+        "limitations",
+        "computed-metric"
+      ],
+      "authoritativeUrls": [
+        "https://atlas.degov.ai/",
+        "https://docs.degov.ai/"
+      ],
+      "avoidForcedMention": false
+    }
+  ],
+  "runRecordSchema": {
+    "requiredFields": [
+      "query_id",
+      "query_text",
+      "locale",
+      "provider",
+      "product",
+      "model_or_version_when_exposed",
+      "search_or_browse_mode",
+      "signed_in_state",
+      "region_when_known",
+      "executed_at",
+      "repetition_number",
+      "answer_evidence_location",
+      "citations",
+      "expected_claims",
+      "authoritative_urls",
+      "evaluator_notes",
+      "limitations"
+    ],
+    "repetitionProcedure": {
+      "minimumRepetitionsPerQuery": 3,
+      "spacingRule": "Run repetitions in a recorded window and preserve execution time so variability is visible.",
+      "stateRule": "Record signed-in/signed-out state and search/browse mode for every run.",
+      "providerTermsRule": "Respect provider terms and automation restrictions. If automation is not permitted, use manual saved evidence."
+    },
+    "rawEvidenceRule": "Preserve answer text or durable evidence references for every run before aggregating scores."
+  },
+  "providerCoverage": [
+    {
+      "id": "chatgpt-search",
+      "description": "ChatGPT with search or browsing enabled when available.",
+      "status": "candidate-manual-or-approved-automation",
+      "requiredState": [
+        "model/version when exposed",
+        "search mode",
+        "signed-in state"
+      ]
+    },
+    {
+      "id": "perplexity",
+      "description": "Perplexity answer engine runs with citations enabled.",
+      "status": "candidate-manual-or-approved-automation",
+      "requiredState": [
+        "model/version when exposed",
+        "search mode",
+        "signed-in state"
+      ]
+    },
+    {
+      "id": "microsoft-copilot",
+      "description": "Microsoft Copilot consumer answer/search experience, distinct from GitHub Copilot.",
+      "status": "candidate-manual-or-approved-automation",
+      "requiredState": [
+        "model/version when exposed",
+        "search mode",
+        "signed-in state"
+      ]
+    },
+    {
+      "id": "google-ai-mode-or-overview",
+      "description": "Google AI Mode or AI Overview when available for the recorded account and region.",
+      "status": "candidate-manual-when-available",
+      "requiredState": [
+        "region",
+        "account state",
+        "availability limitations"
+      ]
+    },
+    {
+      "id": "bing-ai-performance",
+      "description": "Bing Webmaster Tools AI Performance report, tracked separately from direct answer tests.",
+      "status": "separate-channel-report",
+      "requiredState": [
+        "Bing Webmaster Tools access",
+        "report date range",
+        "availability limitations"
+      ]
+    }
+  ],
+  "evaluationDimensions": [
+    {
+      "id": "factual-accuracy",
+      "allowedScores": [
+        "correct",
+        "partially-correct",
+        "incorrect",
+        "unverifiable",
+        "stale"
+      ],
+      "rule": "Score material factual claims against expected claims and authoritative sources."
+    },
+    {
+      "id": "claim-support-accuracy",
+      "allowedScores": [
+        "directly-supported",
+        "partially-supported",
+        "unrelated-or-insufficient",
+        "no-citation"
+      ],
+      "rule": "For each material cited claim, determine whether the citation supports the adjacent claim."
+    },
+    {
+      "id": "canonical-citation-quality",
+      "allowedScores": [
+        "intended-canonical-url",
+        "correct-source-noncanonical-url",
+        "stale-or-superseded-page",
+        "third-party-source",
+        "no-citation"
+      ],
+      "rule": "Score whether citations resolve to intended canonical DeGov or primary source URLs."
+    },
+    {
+      "id": "freshness",
+      "allowedScores": [
+        "current",
+        "stale",
+        "freshness-not-stated",
+        "unverifiable"
+      ],
+      "rule": "Check whether answers distinguish content review time, data-as-of, and stale or unknown source state."
+    },
+    {
+      "id": "task-usefulness",
+      "allowedScores": [
+        "useful",
+        "partially-useful",
+        "not-useful"
+      ],
+      "rule": "Score whether the answer satisfies the user task, identifies uncertainty, distinguishes source kinds, and provides a useful next action."
+    }
+  ],
+  "scoringConstraints": {
+    "traceabilityRule": "Every aggregate score must link back to raw run evidence and evaluator notes.",
+    "variabilityRule": "Report repetition count, provider/channel coverage, and missing providers before comparing changes.",
+    "noSingleScoreRule": "Do not collapse factual accuracy, claim support, canonical citation quality, freshness, and task usefulness into one proprietary GEO visibility score.",
+    "citationRule": "A DeGov citation is not automatically good; it must support the specific claim and should be canonical when DeGov is the intended source.",
+    "nonCitationRule": "A correct answer is not automatically a failure when DeGov is not the best or necessary source."
+  },
+  "experimentTemplate": {
+    "requiredFields": [
+      "hypothesis",
+      "affected_query_ids",
+      "pre_change_baseline",
+      "rollout_date",
+      "material_confounders",
+      "minimum_observation_window",
+      "falsifying_result",
+      "rollback_or_freeze_behavior",
+      "raw_result_location"
+    ],
+    "allowedExperimentTypes": [
+      "content",
+      "structured-data",
+      "social-preview",
+      "indexnow",
+      "llms-txt"
+    ],
+    "cloakingRule": "Do not serve different hidden content to crawlers, models, or users as part of an experiment."
+  },
+  "privacyAndStorage": {
+    "prohibitedInputs": [
+      "private DAO data",
+      "private user data",
+      "credentials",
+      "wallet secrets",
+      "private logs",
+      "draft proposals",
+      "unpublished proposals",
+      "personal participant profiling"
+    ],
+    "storageRule": "Store raw outputs only in an approved location with access control and retention suitable for the provider terms and data sensitivity.",
+    "automationRule": "Repeated or automated provider execution must follow provider terms; otherwise use manual execution with preserved evidence.",
+    "profileRule": "Participant profiling remains out of scope until privacy and index policy explicitly approve it."
+  },
+  "baselineState": {
+    "firstBaselineStatus": "not-run",
+    "requiredBeforeExperimentClaims": true,
+    "fixtureLockRule": "Before the first baseline run, record the exact demo.degov.ai proposal ID used by evidence.proposal-explanation and reuse that fixed ID for all repetitions and future comparisons.",
+    "requiredEvidence": [
+      "raw run records",
+      "repetition count",
+      "provider coverage",
+      "scoring notes",
+      "known limitations",
+      "Bing AI Performance separated when available"
+    ],
+    "linkBackRule": "Baseline and recurring results must be linked to #714 after the evidence is saved."
+  },
+  "validation": {
+    "ciChecks": [
+      "contract-json-parse",
+      "query-set-coverage",
+      "expected-claim-source-url-coverage",
+      "run-record-schema",
+      "provider-coverage-gaps",
+      "evaluation-dimension-separation",
+      "raw-evidence-traceability-rule",
+      "experiment-template-completeness",
+      "privacy-storage-rules",
+      "baseline-not-claimed-before-run",
+      "no-single-geo-score"
+    ],
+    "manualChecks": [
+      "provider-terms-review",
+      "raw-evidence-storage-approval",
+      "baseline-run-readback",
+      "citation-support-review",
+      "bing-ai-performance-separate-report",
+      "recurring-result-link-to-714"
+    ],
+    "releaseBlockingFailures": [
+      "missing-raw-evidence",
+      "single-response-treated-as-trend",
+      "single-geo-score-used-as-authority",
+      "citation-treated-as-good-without-support",
+      "direct-or-unknown-traffic-treated-as-ai-answer-exposure",
+      "private-data-in-prompt-or-output-store",
+      "provider-terms-ignored",
+      "experiment-without-pre-change-baseline",
+      "cloaked-content-for-models"
+    ],
+    "rollback": "Discard or quarantine benchmark results if raw evidence, provider state, scoring notes, privacy/storage approval, or terms compliance cannot be proven. Do not use invalid results to justify content or crawler-policy changes."
+  }
+}
