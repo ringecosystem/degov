@@ -1,0 +1,1495 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1026",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/seo-geo-crawler-access-policy.json",
+    "localCheck": "pnpm run test:seo-geo-crawler-policy",
+    "changeRule": "A crawler, purpose class, policy decision, control layer, or rollout rule may change only with an owner, official source, verification method, rollback path, and #714-linked rationale."
+  },
+  "policyDefaults": {
+    "publicSearchIndex": "allow",
+    "publicAiSearchReference": "allow",
+    "publicUserTriggeredFetch": "allow",
+    "publicModelTraining": "block-by-default",
+    "publicSocialPreview": "allow",
+    "privateTransactionalPreviewStaging": "block-or-auth-required",
+    "trainingAccessRule": "Training access remains blocked or undecided unless product, legal, security, and infrastructure owners explicitly approve a change.",
+    "identityRule": "A claimed User-Agent alone is never verified identity; use official IP, reverse-DNS, provider verification, or platform-provided verified bot signals where available."
+  },
+  "purposeClasses": [
+    {
+      "id": "search-index",
+      "description": "General search indexing crawlers that discover, crawl, and index public web pages.",
+      "defaultPolicy": "allow",
+      "expectedPublicOutcome": "Approved public canonical pages, robots.txt, sitemaps, and share assets are reachable unless route policy says otherwise.",
+      "notObservedMeaning": "No verified request in the observation window; do not treat as blocked or allowed without crawl evidence."
+    },
+    {
+      "id": "ai-search-reference",
+      "description": "AI answer or search-reference crawlers that fetch public pages for search results, answers, citations, or grounding.",
+      "defaultPolicy": "allow",
+      "expectedPublicOutcome": "Approved public content remains reachable for citation/reference use and is measured separately from model-training crawlers.",
+      "notObservedMeaning": "No verified AI reference request in the observation window; preserve as not-observed."
+    },
+    {
+      "id": "user-triggered-fetch",
+      "description": "Fetchers that retrieve a URL because an end user requested or pasted it into a product.",
+      "defaultPolicy": "allow",
+      "expectedPublicOutcome": "Approved public pages can be fetched for user-requested previews or answers; private/auth routes remain protected.",
+      "notObservedMeaning": "No verified user-triggered fetch in the observation window."
+    },
+    {
+      "id": "model-training",
+      "description": "Crawlers or product tokens used to control model training or broad model improvement access.",
+      "defaultPolicy": "block-by-default",
+      "expectedPublicOutcome": "Existing training restrictions remain unchanged until explicit product/legal/security approval.",
+      "notObservedMeaning": "No verified training crawler or policy-token effect in the observation window; do not infer compliance from absence alone."
+    },
+    {
+      "id": "social-preview",
+      "description": "Preview crawlers that fetch public pages and media when links are shared in social or messaging products.",
+      "defaultPolicy": "allow",
+      "expectedPublicOutcome": "Approved public pages and absolute HTTPS share images are reachable for rich previews.",
+      "notObservedMeaning": "No verified preview request in the observation window."
+    }
+  ],
+  "productSurfaces": [
+    {
+      "id": "home",
+      "hostScope": [
+        "degov.ai"
+      ],
+      "repository": "ringecosystem/degov-home",
+      "ownerRole": "official-site owner",
+      "routeScope": "public official-site pages and share assets",
+      "desiredPolicyByPurpose": {
+        "search-index": "allow",
+        "ai-search-reference": "allow",
+        "user-triggered-fetch": "allow",
+        "model-training": "block-by-default",
+        "social-preview": "allow"
+      }
+    },
+    {
+      "id": "docs",
+      "hostScope": [
+        "docs.degov.ai"
+      ],
+      "repository": "ringecosystem/degov-docs",
+      "ownerRole": "docs owner",
+      "routeScope": "public documentation pages, sitemap, robots, and share assets",
+      "desiredPolicyByPurpose": {
+        "search-index": "allow",
+        "ai-search-reference": "allow",
+        "user-triggered-fetch": "allow",
+        "model-training": "block-by-default",
+        "social-preview": "allow"
+      }
+    },
+    {
+      "id": "square",
+      "hostScope": [
+        "square.degov.ai"
+      ],
+      "repository": "ringecosystem/degov-square",
+      "ownerRole": "square owner",
+      "routeScope": "public DAO directory and public share assets",
+      "desiredPolicyByPurpose": {
+        "search-index": "allow",
+        "ai-search-reference": "allow",
+        "user-triggered-fetch": "allow",
+        "model-training": "block-by-default",
+        "social-preview": "allow"
+      }
+    },
+    {
+      "id": "dao-sites",
+      "hostScope": [
+        "demo.degov.ai",
+        "lisk.degov.ai",
+        "representative custom DAO hosts"
+      ],
+      "repository": "ringecosystem/degov",
+      "ownerRole": "DAO-site owner",
+      "routeScope": "public DAO home, proposal list, proposal detail, delegate, treasury, robots, sitemap, and share assets",
+      "desiredPolicyByPurpose": {
+        "search-index": "allow",
+        "ai-search-reference": "allow",
+        "user-triggered-fetch": "allow",
+        "model-training": "block-by-default",
+        "social-preview": "allow"
+      }
+    },
+    {
+      "id": "atlas",
+      "hostScope": [
+        "atlas.degov.ai"
+      ],
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerRole": "Atlas owner",
+      "routeScope": "public Atlas pages and approved public API-backed share surfaces",
+      "desiredPolicyByPurpose": {
+        "search-index": "allow",
+        "ai-search-reference": "allow",
+        "user-triggered-fetch": "allow",
+        "model-training": "block-by-default",
+        "social-preview": "allow"
+      }
+    },
+    {
+      "id": "private-transactional-preview-staging",
+      "hostScope": [
+        "authenticated routes",
+        "write routes",
+        "OAuth routes",
+        "profile edit routes",
+        "preview deployments",
+        "staging deployments"
+      ],
+      "repository": "owning application or infrastructure repository",
+      "ownerRole": "product owner plus security owner",
+      "routeScope": "private, transactional, write, preview, and staging surfaces",
+      "desiredPolicyByPurpose": {
+        "search-index": "block-or-auth-required",
+        "ai-search-reference": "block-or-auth-required",
+        "user-triggered-fetch": "block-or-auth-required",
+        "model-training": "block-or-auth-required",
+        "social-preview": "block-or-auth-required"
+      }
+    }
+  ],
+  "controlLayers": [
+    {
+      "id": "application-robots",
+      "ownerRole": "application owner",
+      "scope": "robots.txt, sitemap declarations, page robots metadata, X-Robots-Tag, status-code behavior",
+      "publicEvidence": "Fetch robots.txt, sitemap.xml, representative HTML, and headers for each host.",
+      "confidentiality": "public"
+    },
+    {
+      "id": "cdn-waf",
+      "ownerRole": "infrastructure/security owner",
+      "scope": "verified bot handling, WAF challenges, rate limits, allowlists, blocks, cache behavior",
+      "publicEvidence": "Publish aggregate outcome counts only; do not publish rules, IP lists, or raw logs.",
+      "confidentiality": "private-operational"
+    },
+    {
+      "id": "gitops-infrastructure",
+      "ownerRole": "infrastructure owner",
+      "scope": "Cloudflare, hosting, DNS, routing, and edge policy changes",
+      "publicEvidence": "Link approved change request or sanitized rollout summary.",
+      "confidentiality": "private-operational"
+    },
+    {
+      "id": "authentication",
+      "ownerRole": "application/security owner",
+      "scope": "cookies, sessions, auth gates, preview protection, write-route protection",
+      "publicEvidence": "Representative route status and noindex/auth behavior.",
+      "confidentiality": "public-or-private"
+    }
+  ],
+  "crawlerAgents": [
+    {
+      "id": "googlebot",
+      "provider": "Google",
+      "token": "Googlebot",
+      "purposeClass": "search-index",
+      "officialSource": "https://developers.google.com/crawling/docs/crawlers-fetchers/overview-google-crawlers",
+      "robotsBehavior": "Uses robots.txt and Google crawler/fetcher behavior documented by Google.",
+      "identityVerification": "Use Google's official reverse DNS and IP verification guidance before treating a request as verified Googlebot.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous robots/CDN rules and confirm Googlebot outcome in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "bingbot",
+      "provider": "Microsoft Bing",
+      "token": "Bingbot",
+      "purposeClass": "search-index",
+      "officialSource": "https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0",
+      "robotsBehavior": "Uses robots.txt and Bing Webmaster crawler behavior documented by Microsoft.",
+      "identityVerification": "Use Bing Webmaster Tools or Microsoft's documented IP/rDNS verification before treating a request as verified Bingbot.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous robots/CDN rules and confirm Bingbot outcome in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "oai-searchbot",
+      "provider": "OpenAI",
+      "token": "OAI-SearchBot",
+      "purposeClass": "ai-search-reference",
+      "officialSource": "https://developers.openai.com/api/docs/bots",
+      "robotsBehavior": "OpenAI documents OAI-SearchBot as a search user agent that can be managed separately from GPTBot.",
+      "identityVerification": "Use OpenAI's documented bot source and verified crawler identification before classifying access.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous robots/CDN rules and confirm OAI-SearchBot outcome in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "chatgpt-user",
+      "provider": "OpenAI",
+      "token": "ChatGPT-User",
+      "purposeClass": "user-triggered-fetch",
+      "officialSource": "https://developers.openai.com/api/docs/bots",
+      "robotsBehavior": "OpenAI documents user-triggered fetchers separately from automatic crawlers.",
+      "identityVerification": "Classify only with documented OpenAI identity signals; do not infer from User-Agent alone.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "security",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous CDN/auth handling and confirm user-triggered fetch outcomes in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "gptbot",
+      "provider": "OpenAI",
+      "token": "GPTBot",
+      "purposeClass": "model-training",
+      "officialSource": "https://developers.openai.com/api/docs/bots",
+      "robotsBehavior": "OpenAI documents GPTBot separately from OAI-SearchBot and user-triggered agents.",
+      "identityVerification": "Use OpenAI's documented bot identity before classifying access.",
+      "desiredPolicy": "block-by-default",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "legal",
+        "security",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous training-bot block and confirm no approved policy was widened.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "claude-searchbot",
+      "provider": "Anthropic",
+      "token": "Claude-SearchBot",
+      "purposeClass": "ai-search-reference",
+      "officialSource": "https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "robotsBehavior": "Anthropic documents web access behavior and distinguishes search/reference access from model-training crawlers.",
+      "identityVerification": "Use Anthropic's documented crawler identity guidance where available; otherwise record as unverified.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous robots/CDN rules and confirm Claude-SearchBot outcome in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "claude-user",
+      "provider": "Anthropic",
+      "token": "Claude-User",
+      "purposeClass": "user-triggered-fetch",
+      "officialSource": "https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "robotsBehavior": "Anthropic documents user-requested fetching separately from broad crawling.",
+      "identityVerification": "Use documented Anthropic identity signals where available; otherwise record as unverified.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "security",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous CDN/auth handling and confirm user-triggered fetch outcomes in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "claudebot",
+      "provider": "Anthropic",
+      "token": "ClaudeBot",
+      "purposeClass": "model-training",
+      "officialSource": "https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "robotsBehavior": "Anthropic documents ClaudeBot separately from user-triggered access.",
+      "identityVerification": "Use documented Anthropic identity signals where available; otherwise record as unverified.",
+      "desiredPolicy": "block-by-default",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "legal",
+        "security",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous training-bot block and confirm no approved policy was widened.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "perplexitybot",
+      "provider": "Perplexity",
+      "token": "PerplexityBot",
+      "purposeClass": "ai-search-reference",
+      "officialSource": "https://docs.perplexity.ai/guides/bots",
+      "robotsBehavior": "Perplexity documents crawler/user-agent controls for its bots.",
+      "identityVerification": "Use Perplexity's documented identity guidance where available; otherwise record as unverified.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous robots/CDN rules and confirm PerplexityBot outcome in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "perplexity-user",
+      "provider": "Perplexity",
+      "token": "Perplexity-User",
+      "purposeClass": "user-triggered-fetch",
+      "officialSource": "https://docs.perplexity.ai/guides/bots",
+      "robotsBehavior": "Perplexity documents user-requested fetch behavior separately from crawler access.",
+      "identityVerification": "Use Perplexity's documented identity guidance where available; otherwise record as unverified.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "security",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous CDN/auth handling and confirm user-triggered fetch outcomes in aggregate logs.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "google-extended",
+      "provider": "Google",
+      "token": "Google-Extended",
+      "purposeClass": "model-training",
+      "officialSource": "https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers#google-extended",
+      "robotsBehavior": "Google-Extended is a robots.txt product token, not a distinct HTTP User-Agent to classify from access logs.",
+      "identityVerification": "Do not expect Google-Extended in request logs; verify related Google crawler identity separately and audit robots.txt policy text.",
+      "desiredPolicy": "block-by-default",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "legal",
+        "security",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous Google-Extended robots directive and confirm public robots.txt output.",
+      "tokenType": "robots-product-token",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "robots-policy-audit",
+      "maxIdentityState": "policy-token-only"
+    },
+    {
+      "id": "facebookexternalhit",
+      "provider": "Meta",
+      "token": "facebookexternalhit",
+      "purposeClass": "social-preview",
+      "officialSource": "https://developers.facebook.com/docs/sharing/webmasters/crawler",
+      "robotsBehavior": "Meta documents its sharing crawler for link previews.",
+      "identityVerification": "Use Meta's documented crawler behavior and aggregate edge evidence; preserve unverified requests separately.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous social-preview handling and confirm share preview fetches.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "linkedinbot",
+      "provider": "LinkedIn",
+      "token": "LinkedInBot",
+      "purposeClass": "social-preview",
+      "officialSource": "https://www.linkedin.com/robots.txt",
+      "robotsBehavior": "LinkedIn publishes LinkedInBot in its robots.txt; treat as social/search preview access until product-specific docs say otherwise.",
+      "identityVerification": "LinkedIn does not publish a crawler-specific verification method in the cited source; classify matching requests as unverified unless the edge platform supplies a verified-bot signal.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous social-preview handling and confirm LinkedIn preview fetches.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-published-token-list",
+      "identityVerificationMethod": "unavailable",
+      "maxIdentityState": "unverified"
+    },
+    {
+      "id": "twitterbot",
+      "provider": "X/Twitter",
+      "token": "Twitterbot",
+      "purposeClass": "social-preview",
+      "officialSource": "https://developer.x.com/en/docs/x-for-websites/cards/overview/abouts-cards",
+      "robotsBehavior": "X/Twitter Cards require public metadata and media fetchability for previews.",
+      "identityVerification": "Use platform verified-bot signals or aggregate edge evidence; preserve unverified requests separately.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "application-robots",
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous social-preview handling and confirm X/Twitter card fetches.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "slackbot",
+      "provider": "Slack",
+      "token": "Slackbot-LinkExpanding",
+      "purposeClass": "social-preview",
+      "officialSource": "https://api.slack.com/robots",
+      "robotsBehavior": "Slack documents link-expanding robots that fetch metadata and media for shared URLs.",
+      "identityVerification": "Use Slack's documented User-Agent plus aggregate edge evidence; preserve unverified requests separately.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous social-preview handling and confirm Slack unfurl fetches.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-crawler-documentation",
+      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
+      "maxIdentityState": "verified"
+    },
+    {
+      "id": "discordbot",
+      "provider": "Discord",
+      "token": "Discordbot",
+      "purposeClass": "social-preview",
+      "officialSource": "https://docs.discord.com/developers/reference",
+      "robotsBehavior": "Discord link preview behavior must be treated as social-preview fetching, not indexing or training.",
+      "identityVerification": "Discord does not publish a crawler-specific verification method in the cited source; classify matching requests as unverified unless the edge platform supplies a verified-bot signal.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous social-preview handling and confirm Discord embed fetches.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-generic-reference",
+      "identityVerificationMethod": "unavailable",
+      "maxIdentityState": "unverified"
+    },
+    {
+      "id": "telegrambot",
+      "provider": "Telegram",
+      "token": "TelegramBot",
+      "purposeClass": "social-preview",
+      "officialSource": "https://core.telegram.org/bots/api",
+      "robotsBehavior": "Telegram link preview behavior must be treated as social-preview fetching, not indexing or training.",
+      "identityVerification": "Telegram does not publish a crawler-specific verification method in the cited source; classify matching requests as unverified unless the edge platform supplies a verified-bot signal.",
+      "desiredPolicy": "allow",
+      "productScope": [
+        "home",
+        "docs",
+        "square",
+        "dao-sites",
+        "atlas"
+      ],
+      "enforcementLayers": [
+        "cdn-waf"
+      ],
+      "evidenceState": "access-gap",
+      "ownerApprovers": [
+        "product",
+        "infrastructure"
+      ],
+      "rollback": "Restore previous social-preview handling and confirm Telegram preview fetches.",
+      "tokenType": "http-user-agent",
+      "officialSourceType": "provider-generic-reference",
+      "identityVerificationMethod": "unavailable",
+      "maxIdentityState": "unverified"
+    }
+  ],
+  "currentProductionBehavior": [
+    {
+      "surface": "home",
+      "hosts": [
+        "degov.ai"
+      ],
+      "observedAt": "2026-08-04T17:42:11Z",
+      "observationWindow": "public-http-readback-2026-08-04",
+      "source": "public robots.txt fetch",
+      "publicRobots": {
+        "state": "observed",
+        "statusCode": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "summary": "User-Agent * allows / and declares https://degov.ai/sitemap.xml; no training-specific disallow was observed."
+      },
+      "cdnWaf": {
+        "state": "access-gap",
+        "ownerRole": "infrastructure/security owner",
+        "requiredAction": "Export aggregate verified-bot outcomes by purpose before claiming CDN/WAF implementation."
+      },
+      "authState": "public routes expected public; private/write routes remain auth-controlled by owning apps",
+      "purposeOutcomes": [
+        {
+          "purposeClass": "search-index",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-allow-all"
+        },
+        {
+          "purposeClass": "ai-search-reference",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-allow-all"
+        },
+        {
+          "purposeClass": "user-triggered-fetch",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-allow-all"
+        },
+        {
+          "purposeClass": "model-training",
+          "publicRobotsOutcome": "gap",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "no-training-specific-public-robots-block-observed"
+        },
+        {
+          "purposeClass": "social-preview",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-allow-all"
+        }
+      ],
+      "gapOwner": "official-site owner plus infrastructure/security owner",
+      "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+    },
+    {
+      "surface": "docs",
+      "hosts": [
+        "docs.degov.ai"
+      ],
+      "observedAt": "2026-08-04T17:42:11Z",
+      "observationWindow": "public-http-readback-2026-08-04",
+      "source": "public robots.txt fetch",
+      "publicRobots": {
+        "state": "known-gap",
+        "statusCode": 404,
+        "contentType": "text/html; charset=utf-8",
+        "summary": "robots.txt returned a 404 HTML document; no parseable crawler-purpose policy was observed."
+      },
+      "cdnWaf": {
+        "state": "access-gap",
+        "ownerRole": "infrastructure/security owner",
+        "requiredAction": "Export aggregate verified-bot outcomes by purpose before claiming CDN/WAF implementation."
+      },
+      "authState": "public docs routes expected public",
+      "purposeOutcomes": [
+        {
+          "purposeClass": "search-index",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "ai-search-reference",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "user-triggered-fetch",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "model-training",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "social-preview",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        }
+      ],
+      "gapOwner": "docs owner plus infrastructure/security owner",
+      "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+    },
+    {
+      "surface": "square",
+      "hosts": [
+        "square.degov.ai"
+      ],
+      "observedAt": "2026-08-04T17:42:11Z",
+      "observationWindow": "public-http-readback-2026-08-04",
+      "source": "public robots.txt fetch",
+      "publicRobots": {
+        "state": "known-gap",
+        "statusCode": 404,
+        "contentType": "text/html; charset=utf-8",
+        "summary": "robots.txt returned a 404 Next.js HTML page; no parseable crawler-purpose policy was observed."
+      },
+      "cdnWaf": {
+        "state": "access-gap",
+        "ownerRole": "infrastructure/security owner",
+        "requiredAction": "Export aggregate verified-bot outcomes by purpose before claiming CDN/WAF implementation."
+      },
+      "authState": "public directory expected public; account/OAuth/settings/write routes should remain blocked or auth-required",
+      "purposeOutcomes": [
+        {
+          "purposeClass": "search-index",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "ai-search-reference",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "user-triggered-fetch",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "model-training",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        },
+        {
+          "purposeClass": "social-preview",
+          "publicRobotsOutcome": "not-observed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "robots-404-html"
+        }
+      ],
+      "gapOwner": "square owner plus infrastructure/security owner",
+      "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+    },
+    {
+      "surface": "dao-sites",
+      "hosts": [
+        "demo.degov.ai",
+        "lisk.degov.ai"
+      ],
+      "observedAt": "2026-08-04T17:42:13Z",
+      "observationWindow": "public-http-readback-2026-08-04",
+      "source": "public robots.txt fetch",
+      "publicRobots": {
+        "state": "mixed",
+        "statusCode": 200,
+        "contentType": "mixed text/html and text/plain",
+        "summary": "demo.degov.ai still served an HTML shell for robots.txt in prior route evidence; lisk.degov.ai served Cloudflare managed content signals with search=yes, ai-train=no, ClaudeBot disallow, and Google-Extended disallow."
+      },
+      "cdnWaf": {
+        "state": "access-gap",
+        "ownerRole": "infrastructure/security owner",
+        "requiredAction": "Export aggregate verified-bot outcomes by purpose before claiming CDN/WAF implementation."
+      },
+      "authState": "public DAO routes expected public; write/auth routes protected",
+      "purposeOutcomes": [
+        {
+          "purposeClass": "search-index",
+          "publicRobotsOutcome": "mixed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "lisk-cloudflare-search-allow-demo-html-gap"
+        },
+        {
+          "purposeClass": "ai-search-reference",
+          "publicRobotsOutcome": "mixed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "lisk-cloudflare-use-reference-demo-html-gap"
+        },
+        {
+          "purposeClass": "user-triggered-fetch",
+          "publicRobotsOutcome": "mixed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "lisk-cloudflare-use-reference-demo-html-gap"
+        },
+        {
+          "purposeClass": "model-training",
+          "publicRobotsOutcome": "mixed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "lisk-cloudflare-ai-train-no-demo-html-gap"
+        },
+        {
+          "purposeClass": "social-preview",
+          "publicRobotsOutcome": "mixed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "lisk-cloudflare-allow-demo-html-gap"
+        }
+      ],
+      "gapOwner": "DAO-site owner plus infrastructure/security owner",
+      "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+    },
+    {
+      "surface": "atlas",
+      "hosts": [
+        "atlas.degov.ai"
+      ],
+      "observedAt": "2026-08-04T17:42:13Z",
+      "observationWindow": "public-http-readback-2026-08-04",
+      "source": "public robots.txt fetch",
+      "publicRobots": {
+        "state": "observed",
+        "statusCode": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "summary": "Cloudflare managed content signals observed: search=yes, ai-train=no, use=reference, plus ClaudeBot and Google-Extended disallow entries."
+      },
+      "cdnWaf": {
+        "state": "access-gap",
+        "ownerRole": "infrastructure/security owner",
+        "requiredAction": "Export aggregate verified-bot outcomes by purpose before claiming CDN/WAF implementation."
+      },
+      "authState": "public Atlas routes expected public",
+      "purposeOutcomes": [
+        {
+          "purposeClass": "search-index",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "cloudflare-search-yes"
+        },
+        {
+          "purposeClass": "ai-search-reference",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "cloudflare-use-reference"
+        },
+        {
+          "purposeClass": "user-triggered-fetch",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "cloudflare-use-reference"
+        },
+        {
+          "purposeClass": "model-training",
+          "publicRobotsOutcome": "blocked",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "cloudflare-ai-train-no-google-extended-claudebot-disallow"
+        },
+        {
+          "purposeClass": "social-preview",
+          "publicRobotsOutcome": "allowed",
+          "edgeOutcome": "access-gap",
+          "evidenceBasis": "cloudflare-default-allow"
+        }
+      ],
+      "gapOwner": "Atlas owner plus infrastructure/security owner",
+      "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+    }
+  ],
+  "verificationRequirements": {
+    "requiredLogFields": [
+      "timestamp",
+      "host",
+      "pathGroup",
+      "statusGroup",
+      "userAgent",
+      "crawlerPurpose",
+      "identityVerification",
+      "wafAction",
+      "cacheResult",
+      "count",
+      "window"
+    ],
+    "identityStates": [
+      "verified",
+      "unverified",
+      "policy-token-only",
+      "not-observed"
+    ],
+    "accessOutcomeStates": [
+      "allowed",
+      "blocked",
+      "challenged",
+      "failed",
+      "not-observed"
+    ],
+    "rule": "Do not report a policy as implemented from a User-Agent string alone. Every public claim must include host, purpose, identity state, outcome state, owner, observation window, and evidence link."
+  },
+  "implementationFollowups": [
+    {
+      "ownerRepository": "ringecosystem/degov",
+      "when": "Open only if DAO robots/sitemap or application robots metadata needs a code change after the policy is approved.",
+      "allowedScope": "DAO-site application robots/meta/status behavior only."
+    },
+    {
+      "ownerRepository": "ringecosystem/degov-home",
+      "when": "Open only for official-site robots/share asset policy changes.",
+      "allowedScope": "degov.ai application robots/meta/status behavior only."
+    },
+    {
+      "ownerRepository": "ringecosystem/degov-docs",
+      "when": "Open only for docs robots/share asset policy changes.",
+      "allowedScope": "docs.degov.ai application robots/meta/status behavior only."
+    },
+    {
+      "ownerRepository": "ringecosystem/degov-square",
+      "when": "Open only for Square robots/share asset policy changes.",
+      "allowedScope": "square.degov.ai application robots/meta/status behavior only."
+    },
+    {
+      "ownerRepository": "ringecosystem/degov-agent-api",
+      "when": "Open only for Atlas robots/share asset policy changes.",
+      "allowedScope": "atlas.degov.ai application robots/meta/status behavior only."
+    },
+    {
+      "ownerRepository": "infrastructure policy repository",
+      "when": "Open only for CDN/WAF, Cloudflare managed robots, DNS, hosting, or GitOps rule changes after the policy is approved.",
+      "allowedScope": "Infrastructure-owned crawler allow/block/challenge policy and rollback runbook only."
+    }
+  ],
+  "rollout": {
+    "reviewRequired": [
+      "product",
+      "legal",
+      "security",
+      "infrastructure"
+    ],
+    "preflight": [
+      "confirm intended policy",
+      "confirm owning repository",
+      "fetch current robots and representative public routes",
+      "confirm private/write routes stay protected",
+      "record rollback owner"
+    ],
+    "monitoringWindowHours": 48,
+    "rollbackTriggers": [
+      "search-index crawler unexpectedly blocked",
+      "AI reference crawler unexpectedly blocked",
+      "training access widened without approval",
+      "private/write route becomes public",
+      "social preview assets become inaccessible"
+    ],
+    "rollbackProcedure": "Revert the owning application or infrastructure rule, confirm representative robots/route output, and record aggregate crawler outcome evidence without publishing raw logs.",
+    "incidentRule": "If a rule exposes private, transactional, preview, or staging content, treat it as a security incident and roll back before further SEO/GEO changes."
+  },
+  "approvalState": {
+    "status": "approved-policy-contract",
+    "linkedUmbrellaIssue": "https://github.com/ringecosystem/degov/issues/714",
+    "approvalRecords": [
+      {
+        "role": "product",
+        "decision": "approve public search, AI reference, user-triggered fetch, and social preview defaults for implementation follow-ups",
+        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+      },
+      {
+        "role": "security",
+        "decision": "approve block-or-auth-required default for private/write/preview/staging surfaces and require incident rollback on exposure",
+        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+      },
+      {
+        "role": "infrastructure",
+        "decision": "approve control-layer mapping and require aggregate verified-bot evidence before CDN/WAF implementation claims",
+        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+      },
+      {
+        "role": "legal",
+        "decision": "approve preserving model-training restrictions by default; any widening requires a future explicit legal approval",
+        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+      }
+    ],
+    "limitations": [
+      "private CDN/WAF rules and raw logs are not published",
+      "training access remains blocked by default",
+      "implementation follow-ups must be opened only in owning repositories"
+    ]
+  },
+  "authoritativeRuleMap": [
+    {
+      "surface": "home",
+      "purposeClass": "search-index",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-home",
+      "ownerRole": "official-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "official-site owner",
+      "followupTarget": "ringecosystem/degov-home"
+    },
+    {
+      "surface": "home",
+      "purposeClass": "ai-search-reference",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-home",
+      "ownerRole": "official-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "official-site owner",
+      "followupTarget": "ringecosystem/degov-home"
+    },
+    {
+      "surface": "home",
+      "purposeClass": "user-triggered-fetch",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "ownerRepository": "ringecosystem/degov-home",
+      "ownerRole": "official-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "official-site owner",
+      "followupTarget": "ringecosystem/degov-home"
+    },
+    {
+      "surface": "home",
+      "purposeClass": "model-training",
+      "desiredPolicy": "block-by-default",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRole": "official-site owner plus legal/security/infrastructure owners",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "ringecosystem/degov-home"
+    },
+    {
+      "surface": "home",
+      "purposeClass": "social-preview",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-home",
+      "ownerRole": "official-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "official-site owner",
+      "followupTarget": "ringecosystem/degov-home"
+    },
+    {
+      "surface": "docs",
+      "purposeClass": "search-index",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-docs",
+      "ownerRole": "docs owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "docs owner",
+      "followupTarget": "ringecosystem/degov-docs"
+    },
+    {
+      "surface": "docs",
+      "purposeClass": "ai-search-reference",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-docs",
+      "ownerRole": "docs owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "docs owner",
+      "followupTarget": "ringecosystem/degov-docs"
+    },
+    {
+      "surface": "docs",
+      "purposeClass": "user-triggered-fetch",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "ownerRepository": "ringecosystem/degov-docs",
+      "ownerRole": "docs owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "docs owner",
+      "followupTarget": "ringecosystem/degov-docs"
+    },
+    {
+      "surface": "docs",
+      "purposeClass": "model-training",
+      "desiredPolicy": "block-by-default",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRole": "docs owner plus legal/security/infrastructure owners",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "ringecosystem/degov-docs"
+    },
+    {
+      "surface": "docs",
+      "purposeClass": "social-preview",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-docs",
+      "ownerRole": "docs owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "docs owner",
+      "followupTarget": "ringecosystem/degov-docs"
+    },
+    {
+      "surface": "square",
+      "purposeClass": "search-index",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-square",
+      "ownerRole": "square owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "square owner",
+      "followupTarget": "ringecosystem/degov-square"
+    },
+    {
+      "surface": "square",
+      "purposeClass": "ai-search-reference",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-square",
+      "ownerRole": "square owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "square owner",
+      "followupTarget": "ringecosystem/degov-square"
+    },
+    {
+      "surface": "square",
+      "purposeClass": "user-triggered-fetch",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "ownerRepository": "ringecosystem/degov-square",
+      "ownerRole": "square owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "square owner",
+      "followupTarget": "ringecosystem/degov-square"
+    },
+    {
+      "surface": "square",
+      "purposeClass": "model-training",
+      "desiredPolicy": "block-by-default",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRole": "square owner plus legal/security/infrastructure owners",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "ringecosystem/degov-square"
+    },
+    {
+      "surface": "square",
+      "purposeClass": "social-preview",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-square",
+      "ownerRole": "square owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "square owner",
+      "followupTarget": "ringecosystem/degov-square"
+    },
+    {
+      "surface": "dao-sites",
+      "purposeClass": "search-index",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov",
+      "ownerRole": "DAO-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "DAO-site owner",
+      "followupTarget": "ringecosystem/degov"
+    },
+    {
+      "surface": "dao-sites",
+      "purposeClass": "ai-search-reference",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov",
+      "ownerRole": "DAO-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "DAO-site owner",
+      "followupTarget": "ringecosystem/degov"
+    },
+    {
+      "surface": "dao-sites",
+      "purposeClass": "user-triggered-fetch",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "ownerRepository": "ringecosystem/degov",
+      "ownerRole": "DAO-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "DAO-site owner",
+      "followupTarget": "ringecosystem/degov"
+    },
+    {
+      "surface": "dao-sites",
+      "purposeClass": "model-training",
+      "desiredPolicy": "block-by-default",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRole": "DAO-site owner plus legal/security/infrastructure owners",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "ringecosystem/degov"
+    },
+    {
+      "surface": "dao-sites",
+      "purposeClass": "social-preview",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov",
+      "ownerRole": "DAO-site owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "DAO-site owner",
+      "followupTarget": "ringecosystem/degov"
+    },
+    {
+      "surface": "atlas",
+      "purposeClass": "search-index",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-agent-api",
+      "ownerRole": "Atlas owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "Atlas owner",
+      "followupTarget": "ringecosystem/degov-agent-api"
+    },
+    {
+      "surface": "atlas",
+      "purposeClass": "ai-search-reference",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-agent-api",
+      "ownerRole": "Atlas owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "Atlas owner",
+      "followupTarget": "ringecosystem/degov-agent-api"
+    },
+    {
+      "surface": "atlas",
+      "purposeClass": "user-triggered-fetch",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "cdn-waf",
+        "authentication"
+      ],
+      "ownerRepository": "ringecosystem/degov-agent-api",
+      "ownerRole": "Atlas owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "Atlas owner",
+      "followupTarget": "ringecosystem/degov-agent-api"
+    },
+    {
+      "surface": "atlas",
+      "purposeClass": "model-training",
+      "desiredPolicy": "block-by-default",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRole": "Atlas owner plus legal/security/infrastructure owners",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "ringecosystem/degov-agent-api"
+    },
+    {
+      "surface": "atlas",
+      "purposeClass": "social-preview",
+      "desiredPolicy": "allow",
+      "authoritativeLayers": [
+        "application-robots",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "ringecosystem/degov-agent-api",
+      "ownerRole": "Atlas owner",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "Atlas owner",
+      "followupTarget": "ringecosystem/degov-agent-api"
+    }
+  ]
+}
