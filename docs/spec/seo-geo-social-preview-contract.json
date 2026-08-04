@@ -1,0 +1,345 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1029",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/seo-geo-social-preview-contract.json",
+    "localCheck": "pnpm run test:seo-geo-social-preview",
+    "changeRule": "A fixture, platform, image rule, or completion claim may change only with an owner issue, repository follow-up, automated evidence, and #714-linked rationale."
+  },
+  "stagePlan": [
+    {
+      "id": "stable-baseline-assets",
+      "status": "contracted",
+      "scope": "Host-correct metadata, stable 1200x630 fallback images, raw-head extraction, public image fetch checks, and cache documentation for priority fixtures."
+    },
+    {
+      "id": "bounded-entity-specific-assets",
+      "status": "deferred-until-stage-1-stable",
+      "scope": "DAO, proposal, Atlas DAO, and optional Docs page-specific share cards after fallback assets and validation are reliable."
+    }
+  ],
+  "metadataContract": {
+    "openGraphRequired": [
+      "og:title",
+      "og:type",
+      "og:url",
+      "og:image",
+      "og:description",
+      "og:site_name",
+      "og:locale",
+      "og:image:type",
+      "og:image:width",
+      "og:image:height",
+      "og:image:alt"
+    ],
+    "twitterRequired": [
+      "twitter:card",
+      "twitter:title",
+      "twitter:description",
+      "twitter:image",
+      "twitter:image:alt"
+    ],
+    "canonicalUrlRule": "The canonical URL, og:url, and Twitter page URL must resolve to the same validated production page origin and path.",
+    "privateRouteRule": "Private, invalid, authenticated, write, preview, and staging routes must not emit convincing public share metadata and must not enter a public sitemap."
+  },
+  "imageSpec": {
+    "primaryDimensions": {
+      "width": 1200,
+      "height": 630
+    },
+    "allowedMimeTypes": [
+      "image/png",
+      "image/jpeg",
+      "image/webp"
+    ],
+    "requiredTransport": "absolute-https-public-200",
+    "recommendedTwitterCard": "summary_large_image",
+    "minimumCachePolicy": "Cache-Control must be explicit. Mutable dynamic cards require a cache-version strategy before including mutable status, vote totals, or proposal state.",
+    "safeAreaRule": "Keep core title, DAO identity, and DeGov attribution within a centered 1000x500 safe area so platform crops remain readable.",
+    "fallbackHierarchy": [
+      "route-specific validated dynamic image",
+      "surface-specific stable 1200x630 image",
+      "DeGov-branded stable 1200x630 image"
+    ],
+    "dynamicInputRules": [
+      "Escape all dynamic text before rendering.",
+      "Bound title, DAO name, ENS, address, and locale strings before rendering.",
+      "Do not fetch arbitrary user-provided image URLs.",
+      "Do not include wallet addresses, private profile state, proposal drafts, authentication state, OAuth values, or unpublished proposal text.",
+      "Do not include mutable proposal status, vote totals, quorum, or turnout unless cache invalidation is reliable and versioned."
+    ],
+    "textFixtureRequirements": [
+      "long-dao-name",
+      "long-proposal-title",
+      "emoji",
+      "ens-name",
+      "ethereum-address",
+      "non-latin-text"
+    ]
+  },
+  "platforms": [
+    {
+      "id": "meta-facebook",
+      "name": "Meta/Facebook Sharing Debugger",
+      "verificationType": "manual-platform-readback",
+      "requiredEvidence": [
+        "debugger-url",
+        "scrape-time",
+        "rendered-title",
+        "rendered-description",
+        "rendered-image-url",
+        "cache-refresh-result"
+      ],
+      "status": "pending-real-platform-evidence"
+    },
+    {
+      "id": "linkedin",
+      "name": "LinkedIn Post Inspector",
+      "verificationType": "manual-platform-readback",
+      "requiredEvidence": [
+        "inspector-url",
+        "scrape-time",
+        "rendered-title",
+        "rendered-description",
+        "rendered-image-url",
+        "cache-refresh-result"
+      ],
+      "status": "pending-real-platform-evidence"
+    },
+    {
+      "id": "x-twitter",
+      "name": "X preview or current official tooling",
+      "verificationType": "manual-platform-readback",
+      "requiredEvidence": [
+        "tool-or-draft-context",
+        "scrape-time",
+        "rendered-title",
+        "rendered-description",
+        "rendered-image-url",
+        "cache-state"
+      ],
+      "status": "pending-real-platform-evidence"
+    },
+    {
+      "id": "slack",
+      "name": "Slack unfurl",
+      "verificationType": "manual-platform-readback",
+      "requiredEvidence": [
+        "workspace-or-test-channel",
+        "message-time",
+        "rendered-title",
+        "rendered-description",
+        "rendered-image-url",
+        "cache-state"
+      ],
+      "status": "pending-real-platform-evidence"
+    },
+    {
+      "id": "discord",
+      "name": "Discord embed",
+      "verificationType": "manual-platform-readback",
+      "requiredEvidence": [
+        "server-or-test-channel",
+        "message-time",
+        "rendered-title",
+        "rendered-description",
+        "rendered-image-url",
+        "cache-state"
+      ],
+      "status": "pending-real-platform-evidence"
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram link preview",
+      "verificationType": "manual-platform-readback",
+      "requiredEvidence": [
+        "chat-or-saved-message-context",
+        "message-time",
+        "rendered-title",
+        "rendered-description",
+        "rendered-image-url",
+        "cache-state"
+      ],
+      "status": "pending-real-platform-evidence"
+    }
+  ],
+  "priorityFixtures": [
+    {
+      "id": "home.root",
+      "surface": "home",
+      "repository": "ringecosystem/degov-home",
+      "ownerIssue": "repository-follow-up-required",
+      "fixtureUrl": "https://degov.ai/",
+      "canonicalPattern": "https://degov.ai/",
+      "expectedOgType": "website",
+      "imageStrategy": "surface-fallback",
+      "requiredMetadata": "standard-og-twitter",
+      "imageStatus": "follow-up-required",
+      "platformEvidenceStatus": "pending",
+      "notes": "Official site already has metadata, but the stable 1200x630 fallback and real platform readback must be verified in its owning repository."
+    },
+    {
+      "id": "docs.representative-page",
+      "surface": "docs",
+      "repository": "ringecosystem/degov-docs",
+      "ownerIssue": "repository-follow-up-required",
+      "fixtureUrl": "https://docs.degov.ai/user-guide/",
+      "canonicalPattern": "https://docs.degov.ai/<docs-path>/",
+      "expectedOgType": "article-or-website",
+      "imageStrategy": "docs-stable-fallback",
+      "requiredMetadata": "standard-og-twitter",
+      "imageStatus": "follow-up-required",
+      "platformEvidenceStatus": "pending",
+      "notes": "Docs page-specific cards are optional until maintainability is proven; an accurate stable Docs card is sufficient for Stage 1."
+    },
+    {
+      "id": "square.directory",
+      "surface": "square",
+      "repository": "ringecosystem/degov-square",
+      "ownerIssue": "repository-follow-up-required",
+      "fixtureUrl": "https://square.degov.ai/",
+      "canonicalPattern": "https://square.degov.ai/",
+      "expectedOgType": "website",
+      "imageStrategy": "surface-fallback",
+      "requiredMetadata": "standard-og-twitter",
+      "imageStatus": "follow-up-required",
+      "platformEvidenceStatus": "pending",
+      "notes": "Directory metadata must describe visible directory content after the Square server-readable follow-up is deployed."
+    },
+    {
+      "id": "dao.home",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1029",
+      "fixtureUrl": "https://demo.degov.ai/",
+      "additionalFixtureUrls": [
+        "https://lisk.degov.ai/"
+      ],
+      "canonicalPattern": "<dao.siteUrl>/",
+      "expectedOgType": "website",
+      "imageStrategy": "dao-stable-fallback-then-entity-card",
+      "requiredMetadata": "standard-og-twitter",
+      "imageStatus": "current-512x512-follow-up-required",
+      "platformEvidenceStatus": "pending",
+      "notes": "The current DAO fallback asset is 512x512; Stage 1 requires a stable 1200x630 replacement and summary_large_image metadata."
+    },
+    {
+      "id": "dao.proposal-detail",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1029",
+      "fixtureUrl": "https://demo.degov.ai/proposal/1",
+      "additionalFixtureUrls": [
+        "https://lisk.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
+      ],
+      "canonicalPattern": "<dao.siteUrl>/proposal/<proposalId>",
+      "expectedOgType": "article",
+      "imageStrategy": "proposal-title-card-after-safe-fallback",
+      "requiredMetadata": "standard-og-twitter",
+      "imageStatus": "current-generic-follow-up-required",
+      "platformEvidenceStatus": "pending",
+      "notes": "Proposal cards may include DAO identity and safely truncated title; mutable status/vote values remain excluded until cache versioning is approved."
+    },
+    {
+      "id": "atlas.dao-detail",
+      "surface": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerIssue": "repository-follow-up-required",
+      "fixtureUrl": "https://atlas.degov.ai/daos/lisk",
+      "canonicalPattern": "https://atlas.degov.ai/daos/<dao-slug>",
+      "expectedOgType": "website",
+      "imageStrategy": "atlas-stable-fallback-then-entity-card",
+      "requiredMetadata": "standard-og-twitter",
+      "imageStatus": "follow-up-required",
+      "platformEvidenceStatus": "pending",
+      "notes": "Atlas DAO-specific card work belongs in degov-agent-api after the shared image contract is accepted."
+    }
+  ],
+  "regressionFixtures": [
+    {
+      "id": "demo-degov-wrong-development-host",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "fixtureUrl": "https://demo.degov.ai/",
+      "failureClass": "wrong-host-canonical-or-og-url",
+      "expectedRule": "canonical, og:url, twitter URL, and image URLs must use the validated DAO production siteUrl, never a development Vercel origin or request-host fallback."
+    },
+    {
+      "id": "private-route-public-card",
+      "surface": "dao-sites",
+      "repository": "ringecosystem/degov",
+      "fixtureUrl": "https://demo.degov.ai/proposals/new",
+      "failureClass": "private-route-convincing-public-preview",
+      "expectedRule": "Private, write, editor, profile-edit, OAuth, notification, and authenticated routes must not emit rich public cards that imply indexable public content."
+    }
+  ],
+  "automatedValidation": {
+    "requiredChecks": [
+      "raw-head-extraction",
+      "canonical-og-twitter-url-agreement",
+      "absolute-https-image-url",
+      "image-status-mime-dimensions",
+      "redirect-chain-limit",
+      "explicit-cache-header",
+      "safe-fallback",
+      "dynamic-text-escaping-and-bounds",
+      "invalid-private-route-exclusion"
+    ],
+    "releaseBlockingFailures": [
+      "missing-required-og-field",
+      "missing-required-twitter-field",
+      "wrong-host-canonical-og-or-image-url",
+      "twitter-card-not-large-image",
+      "image-not-public-200",
+      "image-wrong-mime",
+      "image-wrong-dimensions",
+      "missing-image-alt",
+      "unbounded-dynamic-text",
+      "private-route-rich-public-card",
+      "mutable-state-without-cache-version"
+    ],
+    "informationalOnly": [
+      "stale-platform-cache",
+      "platform-specific-crop-variance",
+      "ranking-or-traffic-change",
+      "manual-platform-unfurl-missing-before-follow-up"
+    ]
+  },
+  "repositoryFollowUps": [
+    {
+      "repository": "ringecosystem/degov-home",
+      "scope": "Verify or add official-site 1200x630 fallback, complete OG/X metadata, and record real platform readbacks for the homepage fixture.",
+      "status": "required"
+    },
+    {
+      "repository": "ringecosystem/degov-docs",
+      "scope": "Add or verify stable Docs share asset and OG/X metadata for a representative docs page after the canonical host fix is deployed.",
+      "status": "required"
+    },
+    {
+      "repository": "ringecosystem/degov-square",
+      "scope": "Verify Square directory metadata, stable share asset, private-route exclusion, and platform unfurls after directory server-readability lands.",
+      "status": "required"
+    },
+    {
+      "repository": "ringecosystem/degov",
+      "scope": "Replace the current 512x512 DAO fallback with a 1200x630 public image, switch DAO pages to summary_large_image, add long-text fixtures, and verify private-route exclusion.",
+      "status": "required"
+    },
+    {
+      "repository": "ringecosystem/degov-agent-api",
+      "scope": "Add or verify Atlas stable share asset and bounded DAO-specific card strategy for Atlas DAO detail pages.",
+      "status": "required"
+    }
+  ],
+  "completionState": {
+    "contractApproved": false,
+    "automatedFixtureCoverage": "contract-only",
+    "realPlatformEvidence": "pending",
+    "repositoryFollowUpsLinked": false,
+    "closeIssueWhen": "All priority fixture repositories have linked implementation evidence, automated image checks, at least one recorded Meta/LinkedIn/X and Slack/Discord/Telegram unfurl sample as tooling permits, and #714 has the final evidence summary."
+  }
+}
