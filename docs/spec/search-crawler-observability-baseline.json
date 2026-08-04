@@ -214,14 +214,14 @@
     },
     {
       "id": "query-landing-performance",
-      "requiredFields": ["surface", "queryClass", "landingPage", "clicks", "impressions", "ctr", "window"],
-      "interpretation": "Separate branded and non-brand query coverage, qualified landing visits, and product outcomes where consented analytics exists.",
+      "requiredFields": ["surface", "queryClass", "landingPage", "clicks", "impressions", "ctr", "qualifiedVisits", "trueReferrerState", "directOrUnknownVisits", "window"],
+      "interpretation": "Separate branded and non-brand query coverage, qualified landing visits, and product outcomes where consented analytics exists; AI/social attribution requires a real referrer and must otherwise remain direct-or-unknown.",
       "privacyClass": "aggregate"
     },
     {
       "id": "crawl-errors",
-      "requiredFields": ["surface", "host", "pathGroup", "statusGroup", "errorType", "count", "window"],
-      "interpretation": "Track soft 404, duplicate, blocked, server-error, and currently-not-indexed groups without exposing raw private logs.",
+      "requiredFields": ["surface", "host", "pathGroup", "crawlerPurpose", "identityVerification", "statusGroup", "errorType", "wafAction", "observationState", "count", "window"],
+      "interpretation": "Track soft 404, duplicate, blocked, server-error, and currently-not-indexed groups by crawler purpose and verified identity without exposing raw private logs.",
       "privacyClass": "aggregate"
     },
     {
@@ -235,6 +235,18 @@
       "requiredFields": ["surface", "availabilityState", "citationUrl", "groundingQuery", "window"],
       "interpretation": "Record Bing-supported AI Performance data where available; do not treat it as a universal GEO score.",
       "privacyClass": "aggregate"
+    },
+    {
+      "id": "crawler-access-outcomes",
+      "requiredFields": ["surface", "host", "crawlerPurpose", "identityVerification", "statusGroup", "wafAction", "cacheResult", "observationState", "count", "window"],
+      "interpretation": "Report allowed, blocked, challenged, failed, and not-observed crawler outcomes by purpose and host; unverified User-Agent strings must remain unverified.",
+      "privacyClass": "aggregate"
+    },
+    {
+      "id": "referral-qualified-visits",
+      "requiredFields": ["surface", "landingPage", "referrerClass", "trueReferrerState", "qualifiedVisits", "directOrUnknownVisits", "conversionEventState", "window"],
+      "interpretation": "Attribute AI or social referral traffic only when a real referrer exists; unattributed visits remain direct-or-unknown and do not become AI/social referrals.",
+      "privacyClass": "aggregate"
     }
   ],
   "crawlerLogSchema": {
@@ -243,6 +255,14 @@
     "privacyClass": "aggregate-or-sampled",
     "storageRule": "Do not commit raw private logs or exports; publish only aggregate reports or redacted samples.",
     "identityRule": "A claimed User-Agent alone is unverified. Verified crawler identity requires official IP/rDNS guidance or platform-provided verification."
+  },
+  "retentionPolicy": {
+    "rawLogRetentionDays": 30,
+    "aggregateRetentionDays": 395,
+    "minimumAggregationFields": ["surface", "host", "pathGroup", "crawlerPurpose", "identityVerification", "statusGroup", "wafAction", "window"],
+    "redactionRules": ["remove-request-id-before-publication", "remove-user-level-identifiers", "remove-wallet-addresses", "truncate-or-hash-paths-when-sensitive"],
+    "samplingRule": "Raw samples may be kept only for operational debugging and must not be committed; published evidence must be aggregate or explicitly redacted.",
+    "deletionRule": "Delete raw private logs after the retention window unless a security incident hold is approved."
   },
   "crawlerPurposes": [
     {
@@ -289,27 +309,102 @@
       "linkedUmbrellaIssue": "https://github.com/ringecosystem/degov/issues/714",
       "scope": "public raw readback plus access-gap inventory",
       "result": "mixed",
+      "collectionStartedAt": "2026-08-04T16:00:00Z",
+      "collectionEndedAt": "2026-08-04T17:00:00Z",
+      "comparisonWindowsDays": [7, 28, 90],
+      "publicationState": "linked-in-pr-and-to-be-linked-in-714-after-merge",
       "evidenceSource": "docs/spec/seo-geo-route-contract.json dryRunEvidence and this observability contract",
+      "collectionMethods": [
+        {
+          "id": "public-http-readback",
+          "ownerRole": "SEO/GEO implementation owner",
+          "dataSource": "public HTTP fetch",
+          "reproducibleStep": "Run the raw fetch sampler recorded in docs/spec/seo-geo-route-contract.json dryRunEvidence for representative public URLs.",
+          "evidenceLink": "https://github.com/ringecosystem/degov/pull/1041"
+        },
+        {
+          "id": "private-platform-access-inventory",
+          "ownerRole": "search and analytics owners",
+          "dataSource": "Search Console, Bing Webmaster Tools, analytics, and CDN/server logs",
+          "reproducibleStep": "Confirm ownership/access state for each surface before exporting aggregate reports; access gaps are recorded instead of fabricated zeros.",
+          "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"
+        }
+      ],
       "surfaceResults": [
+        {
+          "surface": "home",
+          "status": "access-gap",
+          "summary": "Search Console, Bing, analytics, and log ownership are not confirmed for degov.ai in this repository.",
+          "metricResults": [
+            {"metric": "canonical-indexing", "observationState": "access-gap", "dataSource": "Google Search Console", "ownerRole": "official-site owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "sitemap-processing", "observationState": "access-gap", "dataSource": "Google Search Console and Bing Webmaster Tools", "ownerRole": "official-site owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "query-landing-performance", "observationState": "access-gap", "dataSource": "Search Console and analytics", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawl-errors", "observationState": "access-gap", "dataSource": "Search Console and CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "field-cwv", "observationState": "access-gap", "dataSource": "Search Console field data", "ownerRole": "official-site owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "bing-ai-performance", "observationState": "access-gap", "dataSource": "Bing Webmaster Tools", "ownerRole": "official-site owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawler-access-outcomes", "observationState": "access-gap", "dataSource": "CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "referral-qualified-visits", "observationState": "access-gap", "dataSource": "analytics with true referrer", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"}
+          ]
+        },
         {
           "surface": "docs",
           "status": "known-fail",
-          "summary": "Public readback observed docs.degov.ai canonical pointing at https://degov.ai/."
+          "summary": "Public readback observed docs.degov.ai canonical pointing at https://degov.ai/.",
+          "metricResults": [
+            {"metric": "canonical-indexing", "observationState": "observed", "dataSource": "public HTTP fetch", "ownerRole": "docs owner", "collectionMethod": "public-http-readback", "evidenceLink": "https://github.com/ringecosystem/degov/pull/1041"},
+            {"metric": "sitemap-processing", "observationState": "access-gap", "dataSource": "Search Console and Bing Webmaster Tools", "ownerRole": "docs owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "query-landing-performance", "observationState": "access-gap", "dataSource": "Search Console and analytics", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawl-errors", "observationState": "access-gap", "dataSource": "Search Console and CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "field-cwv", "observationState": "access-gap", "dataSource": "Search Console field data", "ownerRole": "docs owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "bing-ai-performance", "observationState": "access-gap", "dataSource": "Bing Webmaster Tools", "ownerRole": "docs owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawler-access-outcomes", "observationState": "access-gap", "dataSource": "CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "referral-qualified-visits", "observationState": "access-gap", "dataSource": "analytics with true referrer", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"}
+          ]
         },
         {
           "surface": "dao-sites",
           "status": "known-fail",
-          "summary": "Public readback observed demo.degov.ai robots.txt and sitemap.xml serving text/html app shell responses."
+          "summary": "Public readback observed demo.degov.ai robots.txt and sitemap.xml serving text/html app shell responses.",
+          "metricResults": [
+            {"metric": "canonical-indexing", "observationState": "access-gap", "dataSource": "Google Search Console", "ownerRole": "DAO-site owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "sitemap-processing", "observationState": "observed", "dataSource": "public HTTP fetch", "ownerRole": "DAO-site owner", "collectionMethod": "public-http-readback", "evidenceLink": "https://github.com/ringecosystem/degov/pull/1041"},
+            {"metric": "query-landing-performance", "observationState": "access-gap", "dataSource": "Search Console and analytics", "ownerRole": "analytics owner plus DAO owner where applicable", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawl-errors", "observationState": "access-gap", "dataSource": "Search Console and CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "field-cwv", "observationState": "access-gap", "dataSource": "Search Console field data", "ownerRole": "DAO-site owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "bing-ai-performance", "observationState": "access-gap", "dataSource": "Bing Webmaster Tools", "ownerRole": "DAO-site owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawler-access-outcomes", "observationState": "access-gap", "dataSource": "CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "referral-qualified-visits", "observationState": "access-gap", "dataSource": "analytics with true referrer", "ownerRole": "analytics owner plus DAO owner where applicable", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"}
+          ]
         },
         {
           "surface": "square",
           "status": "known-gap",
-          "summary": "GA presence was observed in research, but ownership, canonical readback, and conversion contract remain unverified."
+          "summary": "GA presence was observed in research, but ownership, canonical readback, and conversion contract remain unverified.",
+          "metricResults": [
+            {"metric": "canonical-indexing", "observationState": "known-gap", "dataSource": "public HTTP fetch", "ownerRole": "square owner", "collectionMethod": "public-http-readback", "evidenceLink": "https://github.com/ringecosystem/degov/pull/1041"},
+            {"metric": "sitemap-processing", "observationState": "access-gap", "dataSource": "Search Console and Bing Webmaster Tools", "ownerRole": "square owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "query-landing-performance", "observationState": "access-gap", "dataSource": "Search Console and analytics", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawl-errors", "observationState": "access-gap", "dataSource": "Search Console and CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "field-cwv", "observationState": "access-gap", "dataSource": "Search Console field data", "ownerRole": "square owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "bing-ai-performance", "observationState": "access-gap", "dataSource": "Bing Webmaster Tools", "ownerRole": "square owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawler-access-outcomes", "observationState": "access-gap", "dataSource": "CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "referral-qualified-visits", "observationState": "access-gap", "dataSource": "analytics with true referrer", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"}
+          ]
         },
         {
           "surface": "atlas",
           "status": "known-gap",
-          "summary": "Atlas public routes are reachable, but Search Console/Bing ownership and canonical/indexing baselines remain access gaps."
+          "summary": "Atlas public routes are reachable, but Search Console/Bing ownership and canonical/indexing baselines remain access gaps.",
+          "metricResults": [
+            {"metric": "canonical-indexing", "observationState": "known-gap", "dataSource": "public HTTP fetch", "ownerRole": "Atlas owner", "collectionMethod": "public-http-readback", "evidenceLink": "https://github.com/ringecosystem/degov/pull/1041"},
+            {"metric": "sitemap-processing", "observationState": "access-gap", "dataSource": "Search Console and Bing Webmaster Tools", "ownerRole": "Atlas owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "query-landing-performance", "observationState": "access-gap", "dataSource": "Search Console and analytics", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawl-errors", "observationState": "access-gap", "dataSource": "Search Console and CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "field-cwv", "observationState": "access-gap", "dataSource": "Search Console field data", "ownerRole": "Atlas owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "bing-ai-performance", "observationState": "access-gap", "dataSource": "Bing Webmaster Tools", "ownerRole": "Atlas owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "crawler-access-outcomes", "observationState": "access-gap", "dataSource": "CDN/server logs", "ownerRole": "edge/runtime owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"},
+            {"metric": "referral-qualified-visits", "observationState": "access-gap", "dataSource": "analytics with true referrer", "ownerRole": "analytics owner", "collectionMethod": "private-platform-access-inventory", "evidenceLink": "https://github.com/ringecosystem/degov/issues/1024"}
+          ]
         }
       ],
       "privatePlatformData": {
@@ -317,7 +412,14 @@
         "bingWebmasterTools": "access-gap",
         "analytics": "access-gap-or-fragmented",
         "cdnServerLogs": "access-gap"
-      }
+      },
+      "outcomeClaims": [
+        {
+          "claim": "baseline-established",
+          "basis": ["access-gap-inventory", "public-http-readback"],
+          "limitations": ["private-platform-data-not-connected", "no-ranking-or-traffic-impact-claim"]
+        }
+      ]
     }
   ],
   "reportingRules": {
@@ -329,6 +431,12 @@
       "known-gap",
       "aggregate-trend"
     ],
+    "claimRules": {
+      "requiredFields": ["claim", "basis", "limitations"],
+      "allowedOutcomeBasis": ["access-gap-inventory", "public-http-readback", "verified-platform-export", "aggregate-log-query", "consented-analytics-export"],
+      "successRequiresAtLeastTwoNonVanityEvidenceTypes": true,
+      "singleMetricSuccessForbidden": true
+    },
     "forbiddenSuccessSignals": [
       "total-indexed-pages-only",
       "total-impressions-only",
