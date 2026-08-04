@@ -672,7 +672,7 @@
         "docs"
       ],
       "requiredFreshness": [
-        "content-reviewed-at"
+        "contentReviewedAt"
       ],
       "forbiddenClaims": [
         "unsupported ranking promise",
@@ -689,8 +689,8 @@
         "atlas"
       ],
       "requiredFreshness": [
-        "content-reviewed-at",
-        "content-updated-at when changed"
+        "contentReviewedAt",
+        "contentUpdatedAt"
       ],
       "forbiddenClaims": [
         "fake author",
@@ -707,8 +707,7 @@
         "docs"
       ],
       "requiredFreshness": [
-        "source-data-as-of",
-        "chain or contract source"
+        "sourceDataAsOf"
       ],
       "forbiddenClaims": [
         "build date as update date",
@@ -725,8 +724,8 @@
         "docs"
       ],
       "requiredFreshness": [
-        "source-data-as-of",
-        "sync-status"
+        "sourceDataAsOf",
+        "syncStatus"
       ],
       "forbiddenClaims": [
         "complete coverage when gaps exist",
@@ -741,9 +740,8 @@
         "dao-sites"
       ],
       "requiredFreshness": [
-        "methodology",
-        "source-data-as-of",
-        "coverage and exclusions"
+        "sourceDataAsOf",
+        "syncStatus"
       ],
       "forbiddenClaims": [
         "black-box metric without method",

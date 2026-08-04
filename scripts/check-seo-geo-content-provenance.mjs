@@ -127,11 +127,40 @@ const requiredRejectionIds = new Set([
   "source-free-computed-metrics",
   "third-party-copy-without-authority",
 ]);
+const requiredTopLevelArrays = new Set([
+  "priorityIntents",
+  "claimOwnership",
+  "contentKindRules",
+  "representativeSurfaceAudits",
+  "repositoryFollowUps",
+  "explicitRejections",
+]);
+const requiredTopLevelObjects = new Set([
+  "maintenance",
+  "sourcePolicy",
+  "pageQualityContract",
+  "freshnessContract",
+  "provenanceContract",
+  "internalLinkContract",
+  "gapPrioritization",
+  "baselinePlan",
+  "validation",
+]);
 
 function assertFields(object, fields, label) {
   for (const field of fields) {
     assert.ok(Object.hasOwn(object, field), `${label} missing ${field}`);
   }
+}
+
+function assertArray(value, label) {
+  assert.ok(Array.isArray(value), `${label} must be an array`);
+}
+
+function assertPlainObject(value, label) {
+  assert.equal(typeof value, "object", `${label} must be an object`);
+  assert.notEqual(value, null, `${label} must be an object`);
+  assert.ok(!Array.isArray(value), `${label} must be an object`);
 }
 
 function assertUnique(items, key, label) {
@@ -145,6 +174,12 @@ function assertUnique(items, key, label) {
 assert.equal(contract.version, 1);
 assert.equal(contract.ownerIssue, "https://github.com/ringecosystem/degov/issues/1027");
 assert.equal(contract.parentIssue, "https://github.com/ringecosystem/degov/issues/714");
+for (const field of requiredTopLevelArrays) {
+  assertArray(contract[field], field);
+}
+for (const field of requiredTopLevelObjects) {
+  assertPlainObject(contract[field], field);
+}
 assert.equal(
   contract.maintenance.contractPath,
   "docs/spec/seo-geo-content-provenance-contract.json"
@@ -185,6 +220,18 @@ for (const intent of contract.priorityIntents) {
   );
   assert.ok(requiredSurfaces.has(intent.canonicalOwnerSurface), `${intent.id} owner surface`);
   assert.ok(requiredRepositories.has(intent.canonicalRepository), `${intent.id} repository`);
+  assert.equal(
+    intent.secondarySurfaces.length,
+    new Set(intent.secondarySurfaces).size,
+    `${intent.id} secondary surfaces must be unique`
+  );
+  for (const surface of intent.secondarySurfaces) {
+    assert.ok(requiredSurfaces.has(surface), `${intent.id} invalid secondary surface ${surface}`);
+  }
+  assert.ok(
+    !intent.secondarySurfaces.includes(intent.canonicalOwnerSurface),
+    `${intent.id} repeats owner surface in secondary surfaces`
+  );
   assert.ok(intent.claimGroups.length > 0, `${intent.id} claim groups`);
   assert.equal(intent.baselineRequired, true, `${intent.id} baseline`);
   assert.ok(intent.expectedAnswerShape.length > 80, `${intent.id} expected answer`);
@@ -258,6 +305,12 @@ for (const rule of contract.contentKindRules) {
     assert.ok(requiredSurfaces.has(surface), `${rule.kind} invalid surface ${surface}`);
   }
   assert.ok(rule.requiredFreshness.length > 0, `${rule.kind} freshness`);
+  for (const freshnessKey of rule.requiredFreshness) {
+    assert.ok(
+      Object.hasOwn(contract.freshnessContract, freshnessKey),
+      `${rule.kind} unknown freshness key ${freshnessKey}`
+    );
+  }
   assert.ok(rule.forbiddenClaims.length > 0, `${rule.kind} forbidden claims`);
 }
 
