@@ -96,6 +96,7 @@ const requiredStageIds = new Set([
   "bounded-entity-specific-assets",
 ]);
 const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const evidenceUrlPattern = /^https:\/\/github\.com\/ringecosystem\/.+/;
 const requiredDynamicInputRules = [
   /Escape all dynamic text/,
   /Bound title/,
@@ -276,12 +277,76 @@ for (const followUp of contract.repositoryFollowUps) {
   assert.ok(followUp.scope.length > 50, `${followUp.repository} scope`);
 }
 
-assert.equal(contract.completionState.contractApproved, false);
-assert.equal(contract.completionState.automatedFixtureCoverage, "contract-only");
-assert.equal(contract.completionState.realPlatformEvidence, "pending");
-assert.equal(contract.completionState.repositoryFollowUpsLinked, false);
+assert.equal(typeof contract.completionState.contractApproved, "boolean");
+assert.ok(
+  ["contract-only", "partial", "complete"].includes(
+    contract.completionState.automatedFixtureCoverage
+  ),
+  "automatedFixtureCoverage must be contract-only, partial, or complete"
+);
+assert.ok(
+  ["pending", "partial", "complete"].includes(contract.completionState.realPlatformEvidence),
+  "realPlatformEvidence must be pending, partial, or complete"
+);
+assert.equal(typeof contract.completionState.repositoryFollowUpsLinked, "boolean");
+assert.ok(Array.isArray(contract.completionState.contractApprovalEvidence));
+assert.ok(Array.isArray(contract.completionState.automatedFixtureEvidence));
+assert.ok(Array.isArray(contract.completionState.realPlatformEvidenceRecords));
+assert.ok(Array.isArray(contract.completionState.repositoryFollowUpLinks));
 assert.match(contract.completionState.closeIssueWhen, /Meta\/LinkedIn\/X/);
 assert.match(contract.completionState.closeIssueWhen, /Slack\/Discord\/Telegram/);
+
+if (contract.completionState.contractApproved) {
+  assert.ok(
+    contract.completionState.contractApprovalEvidence.length > 0,
+    "approved contract state requires approval evidence links"
+  );
+  for (const evidenceUrl of contract.completionState.contractApprovalEvidence) {
+    assert.match(evidenceUrl, evidenceUrlPattern, "contract approval evidence must be linked");
+  }
+}
+
+if (contract.completionState.automatedFixtureCoverage !== "contract-only") {
+  assert.ok(
+    contract.completionState.automatedFixtureEvidence.length > 0,
+    "advanced automated fixture coverage requires evidence records"
+  );
+  for (const evidence of contract.completionState.automatedFixtureEvidence) {
+    assert.match(evidence.url, evidenceUrlPattern, "fixture evidence must link to GitHub evidence");
+    assert.ok(requiredFixtureIds.has(evidence.fixtureId), `unknown fixture evidence ${evidence.fixtureId}`);
+    assert.ok(evidence.command.length > 0, `${evidence.fixtureId} missing command`);
+    assert.equal(evidence.result, "pass", `${evidence.fixtureId} evidence must pass`);
+  }
+}
+
+if (contract.completionState.realPlatformEvidence !== "pending") {
+  assert.ok(
+    contract.completionState.realPlatformEvidenceRecords.length > 0,
+    "real platform evidence completion requires evidence records"
+  );
+  for (const evidence of contract.completionState.realPlatformEvidenceRecords) {
+    assert.ok(platformIds.has(evidence.platformId), `unknown platform evidence ${evidence.platformId}`);
+    assert.ok(requiredFixtureIds.has(evidence.fixtureId), `unknown fixture evidence ${evidence.fixtureId}`);
+    assert.match(evidence.url, evidenceUrlPattern, "platform evidence must link to GitHub evidence");
+    assert.ok(evidence.observedAt.length > 0, `${evidence.platformId} missing observedAt`);
+  }
+}
+
+if (contract.completionState.repositoryFollowUpsLinked) {
+  assert.ok(
+    contract.completionState.repositoryFollowUpLinks.length >= requiredRepositories.size,
+    "linked follow-up completion requires one evidence link per repository"
+  );
+  const linkedRepositories = new Set(
+    contract.completionState.repositoryFollowUpLinks.map((link) => link.repository)
+  );
+  for (const repository of requiredRepositories) {
+    assert.ok(linkedRepositories.has(repository), `missing linked follow-up for ${repository}`);
+  }
+  for (const link of contract.completionState.repositoryFollowUpLinks) {
+    assert.match(link.url, evidenceUrlPattern, `${link.repository} follow-up must link to GitHub`);
+  }
+}
 
 console.log(
   `SEO/GEO social preview contract ok: ${contract.priorityFixtures.length} fixtures, ${contract.platforms.length} platforms, ${contract.repositoryFollowUps.length} repository follow-ups`

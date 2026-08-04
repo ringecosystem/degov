@@ -337,9 +337,13 @@
   ],
   "completionState": {
     "contractApproved": false,
+    "contractApprovalEvidence": [],
     "automatedFixtureCoverage": "contract-only",
+    "automatedFixtureEvidence": [],
     "realPlatformEvidence": "pending",
+    "realPlatformEvidenceRecords": [],
     "repositoryFollowUpsLinked": false,
+    "repositoryFollowUpLinks": [],
     "closeIssueWhen": "All priority fixture repositories have linked implementation evidence, automated image checks, at least one recorded Meta/LinkedIn/X and Slack/Discord/Telegram unfurl sample as tooling permits, and #714 has the final evidence summary."
   }
 }
