@@ -15,6 +15,21 @@ function buildDefaultOgImageUrl(siteUrl?: string): string {
   return new URL("/assets/image/og.png", siteUrl ?? DEFAULT_SITE_URL).toString();
 }
 
+function getPublicSiteUrl(config: Config | null | undefined): string | undefined {
+  const value = config?.siteUrl?.trim();
+  if (!value) return undefined;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname === "localhost") {
+      return undefined;
+    }
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 function shortenProposalId(proposalId: string): string {
   if (proposalId.length <= 18) {
     return proposalId;
@@ -55,7 +70,8 @@ export function buildSiteMetadata(
 ): Metadata {
   const daoName = config?.name || "DeGov";
   const description = `${daoName} - DAO governance platform powered by DeGov.AI`;
-  const siteUrl = config?.siteUrl ?? DEFAULT_SITE_URL;
+  const publicSiteUrl = getPublicSiteUrl(config);
+  const siteUrl = publicSiteUrl ?? DEFAULT_SITE_URL;
   const metadataBase = getMetadataBase(siteUrl);
   const ogImageUrl = buildDefaultOgImageUrl(siteUrl);
 
@@ -101,6 +117,21 @@ export function buildSiteMetadata(
   };
 }
 
+export function buildHomeMetadata(
+  config: Config | null | undefined
+): Metadata {
+  const publicSiteUrl = getPublicSiteUrl(config);
+  if (!publicSiteUrl) {
+    return {};
+  }
+
+  return {
+    alternates: {
+      canonical: publicSiteUrl,
+    },
+  };
+}
+
 type ProposalMetadataOptions = {
   config: Config | null | undefined;
   proposalId: string;
@@ -115,7 +146,8 @@ export function buildProposalMetadata({
   description,
 }: ProposalMetadataOptions): Metadata {
   const daoName = config?.name || "DeGov";
-  const siteUrl = config?.siteUrl ?? DEFAULT_SITE_URL;
+  const publicSiteUrl = getPublicSiteUrl(config);
+  const siteUrl = publicSiteUrl ?? DEFAULT_SITE_URL;
   const ogImageUrl = buildDefaultOgImageUrl(siteUrl);
   const normalizedTitle = cleanMetadataText(title);
   const normalizedDescription = cleanMetadataText(description);
@@ -134,9 +166,11 @@ export function buildProposalMetadata({
   return {
     title: proposalTitle,
     description: proposalDescription,
-    alternates: {
-      canonical: proposalUrl,
-    },
+    alternates: publicSiteUrl
+      ? {
+          canonical: proposalUrl,
+        }
+      : undefined,
     openGraph: {
       type: "article",
       siteName: daoName,
@@ -158,6 +192,51 @@ export function buildProposalMetadata({
       creator: DEFAULT_TWITTER_HANDLE,
       title: socialTitle,
       description: proposalDescription,
+      images: [ogImageUrl],
+    },
+  };
+}
+
+export function buildProposalDirectoryMetadata(
+  config: Config | null | undefined
+): Metadata {
+  const daoName = config?.name || "DeGov";
+  const publicSiteUrl = getPublicSiteUrl(config);
+  const siteUrl = publicSiteUrl ?? DEFAULT_SITE_URL;
+  const proposalDirectoryUrl = new URL("/proposals", siteUrl).toString();
+  const title = `${daoName} proposals`;
+  const description = `Browse public governance proposals for ${daoName} on DeGov.AI.`;
+  const ogImageUrl = buildDefaultOgImageUrl(siteUrl);
+
+  return {
+    title,
+    description,
+    alternates: publicSiteUrl
+      ? {
+          canonical: proposalDirectoryUrl,
+        }
+      : undefined,
+    openGraph: {
+      type: "website",
+      siteName: daoName,
+      title,
+      description,
+      url: proposalDirectoryUrl,
+      images: [
+        {
+          url: ogImageUrl,
+          width: 512,
+          height: 512,
+          alt: `${daoName} proposals`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary",
+      site: DEFAULT_TWITTER_HANDLE,
+      creator: DEFAULT_TWITTER_HANDLE,
+      title,
+      description,
       images: [ogImageUrl],
     },
   };

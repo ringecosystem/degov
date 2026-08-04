@@ -1,15 +1,23 @@
-"use client";
+import { buildHomeMetadata } from "@/lib/metadata";
 
-import { DaoHeader } from "./_components/dao-header";
-import { Overview } from "./_components/overview";
-import { Proposals } from "./_components/proposals";
+import { HomeClient } from "./_components/home-client";
+import { DaoPublicSummary } from "./_components/public-route-summary";
+import { getActiveDaoConfig } from "./_server/public-seo";
 
-export default function HomePage() {
+import type { Metadata } from "next";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const config = await getActiveDaoConfig();
+  return buildHomeMetadata(config);
+}
+
+export default async function HomePage() {
+  const config = await getActiveDaoConfig();
+
   return (
     <div className="flex flex-col gap-[20px] lg:gap-[30px]">
-      <DaoHeader />
-      <Overview />
-      <Proposals />
+      <DaoPublicSummary config={config} />
+      <HomeClient />
     </div>
   );
 }

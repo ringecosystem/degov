@@ -313,44 +313,44 @@ fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
     QueryBuilder::<Postgres>::new(
         r#"
         SELECT
-          dao_code,
-          chain_id,
-          contract_set_id,
-          processed_height::BIGINT AS processed_height,
+          checkpoint.dao_code,
+          checkpoint.chain_id,
+          checkpoint.contract_set_id,
+          checkpoint.processed_height::BIGINT AS processed_height,
           (
             SELECT MIN(selector_coverage.range_end_block)::BIGINT
             FROM (
               SELECT MAX(segment.range_end_block) AS range_end_block
               FROM degov_provisional_segment segment
               WHERE segment.status = 'available'
-                AND segment.dao_code = degov_indexer_checkpoint.dao_code
-                AND segment.chain_id IS NOT DISTINCT FROM degov_indexer_checkpoint.chain_id
-                AND segment.contract_set_id = degov_indexer_checkpoint.contract_set_id
+                AND segment.dao_code = checkpoint.dao_code
+                AND segment.chain_id IS NOT DISTINCT FROM checkpoint.chain_id
+                AND segment.contract_set_id = checkpoint.contract_set_id
                 AND segment.dataset_key = split_part(
-                  split_part(degov_indexer_checkpoint.contract_set_id, 'dataset=', 2),
+                  split_part(checkpoint.contract_set_id, 'dataset=', 2),
                   '|',
                   1
                 )
               GROUP BY segment.source, segment.selector
             ) selector_coverage
           ) AS provisional_height,
-          target_height::BIGINT AS target_height,
+          checkpoint.target_height::BIGINT AS target_height,
           CASE
-            WHEN target_height IS NULL THEN NULL
-            WHEN target_height <= 0 THEN 100.0::DOUBLE PRECISION
-            WHEN processed_height IS NULL THEN 0.0::DOUBLE PRECISION
+            WHEN checkpoint.target_height IS NULL THEN NULL
+            WHEN checkpoint.target_height <= 0 THEN 100.0::DOUBLE PRECISION
+            WHEN checkpoint.processed_height IS NULL THEN 0.0::DOUBLE PRECISION
             ELSE LEAST(
-              (processed_height::DOUBLE PRECISION / target_height::DOUBLE PRECISION) * 100.0,
+              (checkpoint.processed_height::DOUBLE PRECISION / checkpoint.target_height::DOUBLE PRECISION) * 100.0,
               100.0
             )
           END AS synced_percentage,
           CASE
-            WHEN processed_height IS NULL OR target_height IS NULL THEN FALSE
-            ELSE processed_height >= target_height
+            WHEN checkpoint.processed_height IS NULL OR checkpoint.target_height IS NULL THEN FALSE
+            ELSE checkpoint.processed_height >= checkpoint.target_height
           END AS is_synced,
-          updated_at::TEXT AS updated_at,
-          last_error
-        FROM degov_indexer_checkpoint
+          checkpoint.updated_at::TEXT AS updated_at,
+          checkpoint.last_error
+        FROM degov_indexer_checkpoint checkpoint
         "#,
     )
 }
@@ -366,16 +366,28 @@ fn push_indexer_status_where<'a>(
         query.push(" WHERE ");
         let mut has_condition = false;
         if let Some(chain_id) = implicit_scope.chain_id {
-            push_column_eq(query, &mut has_condition, "", "chain_id", chain_id);
+            push_column_eq(
+                query,
+                &mut has_condition,
+                "checkpoint",
+                "chain_id",
+                chain_id,
+            );
         }
         if let Some(dao_code) = &implicit_scope.dao_code {
-            push_column_eq(query, &mut has_condition, "", "dao_code", dao_code);
+            push_column_eq(
+                query,
+                &mut has_condition,
+                "checkpoint",
+                "dao_code",
+                dao_code,
+            );
         }
         if let Some(contract_set_id) = &implicit_scope.contract_set_id {
             push_column_eq(
                 query,
                 &mut has_condition,
-                "",
+                "checkpoint",
                 "contract_set_id",
                 contract_set_id,
             );
@@ -384,7 +396,7 @@ fn push_indexer_status_where<'a>(
 }
 
 fn push_indexer_status_order(query: &mut QueryBuilder<'_, Postgres>) {
-    query.push(" ORDER BY dao_code ASC, chain_id ASC, contract_set_id ASC");
+    query.push(" ORDER BY checkpoint.dao_code ASC, checkpoint.chain_id ASC, checkpoint.contract_set_id ASC");
 }
 
 pub(super) async fn query_events<T>(
@@ -1578,9 +1590,7 @@ mod tests {
         let sql = query.sql();
 
         assert!(sql.contains("segment.dataset_key = split_part"));
-        assert!(
-            sql.contains("split_part(degov_indexer_checkpoint.contract_set_id, 'dataset=', 2)")
-        );
+        assert!(sql.contains("split_part(checkpoint.contract_set_id, 'dataset=', 2)"));
     }
 
     #[test]
