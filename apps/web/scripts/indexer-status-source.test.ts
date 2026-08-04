@@ -13,10 +13,10 @@ test("block sync hook reads native indexer status", () => {
   const source = readSource("src/hooks/useBlockSync.ts");
 
   assert.match(source, /indexerStatusService\.getIndexerStatus/);
-  assert.match(source, /latestProcessedHeight/);
+  assert.match(source, /durableProcessedBlock/);
   assert.match(source, /provisionalHeight/);
-  assert.match(source, /processedBlock/);
-  assert.match(source, /usesProcessedHeight/);
+  assert.match(source, /indexedBlock/);
+  assert.match(source, /hasProvisionalHeight/);
   assert.match(source, /syncedPercentage/);
   assert.match(source, /refetchInterval:\s*CACHE_TIMES\.TWO_SECONDS/);
   assert.doesNotMatch(source, /refetchInterval:\s*CACHE_TIMES\.THIRTY_SECONDS/);
@@ -31,7 +31,6 @@ test("indexer status query requests native status fields", () => {
   assert.match(source, /indexerStatus/);
   assert.match(source, /daoCode/);
   assert.match(source, /processedHeight/);
-  assert.match(source, /latestProcessedHeight/);
   assert.match(source, /provisionalHeight/);
   assert.match(source, /targetHeight/);
   assert.match(source, /syncedPercentage/);
@@ -44,6 +43,6 @@ test("indexer status query requests native status fields", () => {
 test("indexer status tooltip includes confirmed safe height", () => {
   const source = readSource("src/components/indexer-status.tsx");
 
-  assert.match(source, /processedBlock/);
+  assert.match(source, /durableProcessedBlock/);
   assert.match(source, /confirmedSafeHeight/);
 });

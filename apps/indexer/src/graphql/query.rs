@@ -1590,9 +1590,7 @@ mod tests {
         let sql = query.sql();
 
         assert!(sql.contains("segment.dataset_key = split_part"));
-        assert!(
-            sql.contains("split_part(degov_indexer_checkpoint.contract_set_id, 'dataset=', 2)")
-        );
+        assert!(sql.contains("split_part(checkpoint.contract_set_id, 'dataset=', 2)"));
     }
 
     #[test]
