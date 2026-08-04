@@ -27,6 +27,7 @@ jobs:
           pnpm run test:seo-geo-observability
           pnpm run test:seo-geo-crawler-policy
           pnpm run test:seo-geo-social-preview
+          pnpm run test:seo-geo-structured-data
           pnpm run test:web-scripts
           pnpm --filter @degov/web build
 

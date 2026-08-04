@@ -20,6 +20,7 @@
     "test:seo-geo-crawler-policy": "node scripts/check-seo-geo-crawler-policy.mjs",
     "test:seo-geo-observability": "node scripts/check-seo-geo-observability.mjs",
     "test:seo-geo-social-preview": "node scripts/check-seo-geo-social-preview.mjs",
+    "test:seo-geo-structured-data": "node scripts/check-seo-geo-structured-data.mjs",
     "test:seo-geo-contract": "node scripts/check-seo-geo-route-contract.mjs",
     "test:web-scripts": "node --test apps/web/scripts/*.test.ts apps/web/scripts/*.test.mjs"
   },
