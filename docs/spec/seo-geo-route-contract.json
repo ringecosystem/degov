@@ -1,0 +1,978 @@
+{
+  "version": 1,
+  "ownerIssue": "https://github.com/ringecosystem/degov/issues/1025",
+  "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
+  "updatedAt": "2026-08-04",
+  "maintenance": {
+    "ownerRepository": "ringecosystem/degov",
+    "contractPath": "docs/spec/seo-geo-route-contract.json",
+    "localCheck": "pnpm run test:seo-geo-contract",
+    "changeRule": "Route classes may be added or changed only with an owner issue, fixture URL, indexability decision, and dry-run status."
+  },
+  "products": [
+    {
+      "id": "home",
+      "name": "DeGov official website",
+      "repository": "ringecosystem/degov-home",
+      "productionOrigin": "https://degov.ai"
+    },
+    {
+      "id": "docs",
+      "name": "DeGov documentation",
+      "repository": "ringecosystem/degov-docs",
+      "productionOrigin": "https://docs.degov.ai"
+    },
+    {
+      "id": "square",
+      "name": "DeGov Square",
+      "repository": "ringecosystem/degov-square",
+      "productionOrigin": "https://square.degov.ai"
+    },
+    {
+      "id": "dao-site",
+      "name": "Individual DAO governance sites",
+      "repository": "ringecosystem/degov",
+      "productionOrigin": "DAO config siteUrl"
+    },
+    {
+      "id": "atlas",
+      "name": "DeGov Atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "productionOrigin": "https://atlas.degov.ai"
+    }
+  ],
+  "assertionTiers": {
+    "releaseBlocking": [
+      "wrong-host-canonical-or-og-url",
+      "approved-public-route-noindex",
+      "approved-public-route-loading-shell",
+      "invalid-resource-indexable-thin-200",
+      "sitemap-invalid-redirected-noindex-or-wrong-host-url",
+      "robots-or-sitemap-html-shell",
+      "malformed-json-ld",
+      "inaccessible-or-wrong-host-social-image",
+      "cross-tenant-content-or-metadata-contamination",
+      "lastmod-not-backed-by-content-change",
+      "dynamic-metadata-jsonld-unsafe-escaping",
+      "cross-tenant-sitemap-contamination"
+    ],
+    "informational": [
+      "external-indexing-state",
+      "search-ranking",
+      "field-core-web-vitals",
+      "ai-citation-frequency",
+      "social-platform-cache-state"
+    ]
+  },
+  "dryRunEvidence": [
+    {
+      "date": "2026-08-04",
+      "level": "local-ci",
+      "command": "pnpm run test:seo-geo-contract",
+      "result": "pass",
+      "scope": "contract-schema",
+      "fixturesCovered": ["docs/spec/seo-geo-route-contract.json"],
+      "observations": [
+        "The local contract schema check preserves required product, route, assertion, repository-plan, and evidence coverage.",
+        "The demo.degov.ai wrong-host social URL remains a named regression fixture for deployed readback.",
+        "Square non-public routes and staging canonical policy remain known gaps instead of being rewritten as passes."
+      ]
+    },
+    {
+      "date": "2026-08-04",
+      "level": "public-http-readback",
+      "command": "node fetch-based raw fixture sampler for docs, square, demo DAO, and Atlas URLs",
+      "result": "mixed",
+      "scope": "representative-fixtures",
+      "fixtureResults": [
+        {
+          "url": "https://docs.degov.ai/",
+          "observedStatus": 200,
+          "observedContentType": "text/html; charset=utf-8",
+          "observedCanonical": "https://degov.ai/",
+          "assertionResult": "fail",
+          "notes": "Canonical host does not match docs.degov.ai."
+        },
+        {
+          "url": "https://square.degov.ai/",
+          "observedStatus": 200,
+          "observedContentType": "text/html; charset=utf-8",
+          "observedCanonical": null,
+          "assertionResult": "known-gap",
+          "notes": "Raw readback succeeds, but canonical extraction did not find a canonical link in the sampled HTML."
+        },
+        {
+          "url": "https://demo.degov.ai/robots.txt",
+          "observedStatus": 200,
+          "observedContentType": "text/html; charset=utf-8",
+          "observedCanonical": null,
+          "assertionResult": "fail",
+          "notes": "Robots endpoint still serves an HTML app shell in the sampled public readback."
+        },
+        {
+          "url": "https://demo.degov.ai/sitemap.xml",
+          "observedStatus": 200,
+          "observedContentType": "text/html; charset=utf-8",
+          "observedCanonical": null,
+          "assertionResult": "fail",
+          "notes": "Sitemap endpoint still serves an HTML app shell in the sampled public readback."
+        },
+        {
+          "url": "https://atlas.degov.ai/daos",
+          "observedStatus": 200,
+          "observedContentType": "text/html; charset=utf-8",
+          "observedCanonical": null,
+          "assertionResult": "known-gap",
+          "notes": "Atlas directory is reachable, but the sampled HTML did not expose a canonical link."
+        }
+      ],
+      "observations": [
+        "The public dry run intentionally records current failures instead of rewriting them as passes.",
+        "Repository-level fixes can be merged while public deployment/readback remains tracked by preview and post-deploy steps."
+      ]
+    }
+  ],
+  "repositoryPlans": [
+    {
+      "repository": "ringecosystem/degov-home",
+      "ci": "Validate homepage canonical, robots, sitemap, JSON-LD, and social metadata after the pending home-page content work lands.",
+      "preview": "Fetch raw HTML, robots.txt, sitemap.xml, and social image from the preview origin.",
+      "postDeploy": "Record raw production fetches and Search Console/Bing inspection when access exists."
+    },
+    {
+      "repository": "ringecosystem/degov-docs",
+      "ci": "Build MkDocs and assert generated canonicals and sitemap URLs use docs.degov.ai.",
+      "preview": "Fetch representative docs pages and sitemap XML from the preview or staging docs host.",
+      "postDeploy": "Verify the live docs homepage, nested pages, sitemap, and robots response."
+    },
+    {
+      "repository": "ringecosystem/degov-square",
+      "ci": "Assert raw homepage HTML contains directory content and links, and metadata matches square.degov.ai.",
+      "preview": "Fetch the homepage with JavaScript disabled semantics and verify no private routes are sitemap targets.",
+      "postDeploy": "Record raw homepage output, metadata, sitemap or explicit sitemap absence, and non-public route behavior."
+    },
+    {
+      "repository": "ringecosystem/degov",
+      "ci": "Assert DAO homepage, proposal list, proposal detail, robots, sitemap, noindex routes, and host isolation semantics.",
+      "preview": "Run raw HTML and sitemap checks against at least demo and a second DAO preview host.",
+      "postDeploy": "Record production raw fetches for two DAO hosts, including invalid and lagging proposal outcomes where reproducible."
+    },
+    {
+      "repository": "ringecosystem/degov-agent-api",
+      "ci": "Assert Atlas static, DAO detail, and sitemap metadata contracts for the bounded public allowlist.",
+      "preview": "Fetch Atlas routes, invalid DAO route, and sitemap from preview deployment.",
+      "postDeploy": "Record live Atlas raw metadata, sitemap XML parse, sampled DAO URLs, and existing crawler policy."
+    }
+  ],
+  "routeClasses": [
+    {
+      "id": "home.root",
+      "product": "home",
+      "repository": "ringecosystem/degov-home",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1025",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://degov.ai/",
+      "canonicalPattern": "https://degov.ai/",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Visible DeGov product identity, primary value proposition, and links to Docs, Square, Atlas, or DAO surfaces.",
+      "sitemap": "include",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "allowed-visible-content-only",
+        "candidateTypes": ["Organization", "WebSite"]
+      },
+      "checks": {
+        "ci": ["raw-head", "json-ld-parse", "sitemap-entry"],
+        "preview": ["raw-fetch", "social-image-fetch"],
+        "postDeploy": ["raw-fetch", "search-console-when-available", "bing-when-available"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-noindex",
+        "approved-public-route-loading-shell",
+        "malformed-json-ld",
+        "inaccessible-or-wrong-host-social-image"
+      ],
+      "dryRun": {
+        "status": "not-run",
+        "notes": "Owned by degov-home follow-up after current home-page changes settle."
+      }
+    },
+    {
+      "id": "home.pricing",
+      "product": "home",
+      "repository": "ringecosystem/degov-home",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1025",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://degov.ai/pricing",
+      "canonicalPattern": "https://degov.ai/pricing",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Visible product plan, packaging, or pricing content that helps users understand DeGov commercial options.",
+      "sitemap": "include-after-degov-home-pr-31-deploy",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "allowed-visible-content-only",
+        "candidateTypes": ["WebPage"]
+      },
+      "checks": {
+        "ci": ["raw-head", "json-ld-parse", "sitemap-entry-after-deploy"],
+        "preview": ["raw-fetch", "social-image-fetch"],
+        "postDeploy": ["raw-fetch", "sitemap-entry", "search-console-when-available"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-noindex",
+        "approved-public-route-loading-shell",
+        "malformed-json-ld",
+        "inaccessible-or-wrong-host-social-image"
+      ],
+      "dryRun": {
+        "status": "not-run",
+        "notes": "Official-site implementation is deferred until degov-home#31 lands and deployed pricing output is re-audited."
+      }
+    },
+    {
+      "id": "docs.home",
+      "product": "docs",
+      "repository": "ringecosystem/degov-docs",
+      "ownerIssue": "https://github.com/ringecosystem/degov-docs/issues/12",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://docs.degov.ai/",
+      "canonicalPattern": "https://docs.degov.ai/",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Visible documentation title, navigation, and introductory content.",
+      "sitemap": "include",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "optional"
+      },
+      "structuredData": {
+        "policy": "allowed-visible-content-only",
+        "candidateTypes": ["BreadcrumbList", "TechArticle"]
+      },
+      "checks": {
+        "ci": ["mkdocs-build", "canonical-host", "sitemap-xml"],
+        "preview": ["raw-fetch", "sitemap-xml-parse"],
+        "postDeploy": ["raw-fetch", "sitemap-xml-parse"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url"
+      ],
+      "dryRun": {
+        "status": "known-fail",
+        "notes": "Implemented by degov-docs#13, but 2026-08-04 public readback still observed canonical https://degov.ai/."
+      }
+    },
+    {
+      "id": "docs.nested-page",
+      "product": "docs",
+      "repository": "ringecosystem/degov-docs",
+      "ownerIssue": "https://github.com/ringecosystem/degov-docs/issues/12",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://docs.degov.ai/user-guide/",
+      "canonicalPattern": "https://docs.degov.ai/<docs-path>/",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Page heading, body content, and documentation navigation are present without client-only rendering.",
+      "sitemap": "include",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "canonical"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "optional"
+      },
+      "structuredData": {
+        "policy": "allowed-visible-content-only",
+        "candidateTypes": ["BreadcrumbList", "TechArticle"]
+      },
+      "checks": {
+        "ci": ["mkdocs-build", "canonical-host", "sitemap-entry"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-noindex"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov-docs#13 using docs.degov.ai site_url."
+      }
+    },
+    {
+      "id": "square.home-directory",
+      "product": "square",
+      "repository": "ringecosystem/degov-square",
+      "ownerIssue": "https://github.com/ringecosystem/degov-square/issues/296",
+      "priority": "P0",
+      "caseTypes": ["valid", "temporary-failure"],
+      "fixtureUrl": "https://square.degov.ai/",
+      "canonicalPattern": "https://square.degov.ai/",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Server-readable DAO directory heading, representative DAO names, and crawlable DAO destination links.",
+      "sitemap": "include-home-only",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["WebSite", "CollectionPage", "ItemList"]
+      },
+      "checks": {
+        "ci": ["raw-html-directory", "metadata-contract", "metadata-safe-escaping", "safe-fallback"],
+        "preview": ["raw-fetch", "hydration-smoke"],
+        "postDeploy": ["raw-fetch", "social-image-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-loading-shell",
+        "dynamic-metadata-jsonld-unsafe-escaping",
+        "inaccessible-or-wrong-host-social-image"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov-square#303; production raw readback remains a measurement follow-up."
+      }
+    },
+    {
+      "id": "square.account-settings",
+      "product": "square",
+      "repository": "ringecosystem/degov-square",
+      "ownerIssue": "https://github.com/ringecosystem/degov-square/issues/297",
+      "priority": "P0",
+      "caseTypes": ["authentication", "private", "transactional"],
+      "fixtureUrl": "https://square.degov.ai/settings",
+      "canonicalPattern": "none",
+      "intent": "private",
+      "expectedStatus": "200-or-redirect",
+      "expectedContentType": "text/html",
+      "indexPolicy": "noindex",
+      "rawContentRequirement": "No user-specific data appears in shared unauthenticated HTML.",
+      "sitemap": "exclude",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["robots:noindex"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "none"
+      },
+      "structuredData": {
+        "policy": "none",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["noindex", "sitemap-exclusion"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url",
+        "cross-tenant-content-or-metadata-contamination"
+      ],
+      "dryRun": {
+        "status": "known-gap",
+        "notes": "Tracked by degov-square#297."
+      }
+    },
+    {
+      "id": "dao.home",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1022",
+      "priority": "P0",
+      "caseTypes": ["valid", "locale"],
+      "fixtureUrl": "https://demo.degov.ai/",
+      "additionalFixtureUrls": ["https://lisk.degov.ai/"],
+      "canonicalPattern": "<dao.siteUrl>/",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Server-readable DAO name, public governance summary, and link to the proposal directory.",
+      "sitemap": "include",
+      "localePolicy": "canonical-primary-path",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["Organization"]
+      },
+      "checks": {
+        "ci": ["raw-html-summary", "metadata-contract", "host-isolation-body-metadata-canonical"],
+        "preview": ["raw-fetch", "sitemap-xml-parse"],
+        "postDeploy": ["raw-fetch", "second-dao-host-readback", "search-console-when-available"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-loading-shell",
+        "cross-tenant-content-or-metadata-contamination",
+        "dynamic-metadata-jsonld-unsafe-escaping"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov#1039. Earlier demo.degov.ai wrong-host social URL remains a regression fixture for deployed readback."
+      }
+    },
+    {
+      "id": "dao.proposal-directory",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1022",
+      "priority": "P0",
+      "caseTypes": ["valid", "query-filter", "temporary-failure"],
+      "fixtureUrl": "https://demo.degov.ai/proposals",
+      "additionalFixtureUrls": ["https://lisk.degov.ai/proposals"],
+      "canonicalPattern": "<dao.siteUrl>/proposals",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Server-readable proposal directory heading, DAO identity, and representative proposal links when available.",
+      "sitemap": "include",
+      "localePolicy": "canonical-primary-path",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["CollectionPage", "ItemList"]
+      },
+      "checks": {
+        "ci": ["raw-html-summary", "metadata-contract", "query-canonical-collapse"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-loading-shell",
+        "dynamic-metadata-jsonld-unsafe-escaping"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov#1039."
+      }
+    },
+    {
+      "id": "dao.proposal-detail-valid",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1022",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://demo.degov.ai/proposal/1",
+      "additionalFixtureUrls": [
+        "https://lisk.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
+      ],
+      "canonicalPattern": "<dao.siteUrl>/proposal/<proposalId>",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Server-readable proposal title or identifier, DAO identity, proposal summary, proposer, and vote count where indexed.",
+      "sitemap": "include-valid-only",
+      "localePolicy": "canonical-primary-path",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["raw-html-summary", "metadata-contract", "sitemap-valid-proposal-only"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-loading-shell",
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url",
+        "dynamic-metadata-jsonld-unsafe-escaping"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov#1039."
+      }
+    },
+    {
+      "id": "dao.proposal-detail-invalid",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1022",
+      "priority": "P0",
+      "caseTypes": ["invalid", "lagging-indexer", "temporary-failure"],
+      "fixtureUrl": "https://demo.degov.ai/proposal/not-a-number",
+      "canonicalPattern": "none-for-invalid",
+      "intent": "public-invalid",
+      "expectedStatus": "404-when-determinably-invalid",
+      "expectedContentType": "text/html",
+      "indexPolicy": "noindex-or-not-found",
+      "rawContentRequirement": "Invalid syntax returns not-found; valid but not-yet-indexed proposals preserve client recovery and are not classified as permanent absence.",
+      "sitemap": "exclude",
+      "localePolicy": "same-status-as-primary",
+      "metadata": {
+        "required": ["robots:noindex-or-404"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "none"
+      },
+      "structuredData": {
+        "policy": "none",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["invalid-id-not-found", "lagging-indexer-not-false-404"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch-when-safe-fixture-exists"]
+      },
+      "releaseBlockingAssertions": [
+        "invalid-resource-indexable-thin-200",
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov#1039 with review feedback preserving lagging-indexer recovery."
+      }
+    },
+    {
+      "id": "dao.delegates-treasury-deferred",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1025",
+      "priority": "P0",
+      "caseTypes": ["valid", "query-filter", "temporary-failure"],
+      "fixtureUrl": "https://demo.degov.ai/delegates",
+      "additionalFixtureUrls": ["https://demo.degov.ai/treasury", "https://lisk.degov.ai/delegates"],
+      "canonicalPattern": "<dao.siteUrl>/<delegates-or-treasury>",
+      "intent": "deferred-public-candidate",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "exclude-until-baseline-validates-public-value",
+      "rawContentRequirement": "Delegates and treasury remain candidate public routes; indexing requires baseline evidence for stable raw content, privacy, crawl volume, and host-isolated metadata.",
+      "sitemap": "exclude-until-validated",
+      "localePolicy": "canonical-primary-path-when-enabled",
+      "metadata": {
+        "required": ["robots:noindex-until-approved", "no-sitemap-entry"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "absolute-https-public-if-present"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["CollectionPage", "ItemList"]
+      },
+      "checks": {
+        "ci": ["sitemap-exclusion", "host-isolation-body-metadata-canonical"],
+        "preview": ["raw-fetch", "noindex-or-exclusion-readback"],
+        "postDeploy": ["raw-fetch", "second-dao-host-readback"]
+      },
+      "releaseBlockingAssertions": [
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url",
+        "cross-tenant-content-or-metadata-contamination",
+        "cross-tenant-sitemap-contamination"
+      ],
+      "dryRun": {
+        "status": "known-gap",
+        "notes": "The first route-policy baseline explicitly deferred DAO delegates and treasury until separate evidence approves indexability."
+      }
+    },
+    {
+      "id": "dao.private-editor-profile-ai",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1023",
+      "priority": "P0",
+      "caseTypes": ["private", "transactional", "editor", "authentication"],
+      "fixtureUrl": "https://demo.degov.ai/proposals/new",
+      "canonicalPattern": "none",
+      "intent": "transactional",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "noindex",
+      "rawContentRequirement": "No wallet, draft, profile, preference, or user-specific state in shared HTML.",
+      "sitemap": "exclude",
+      "localePolicy": "same-noindex-for-localized-aliases",
+      "metadata": {
+        "required": ["robots:noindex"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "none"
+      },
+      "structuredData": {
+        "policy": "none",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["noindex", "localized-noindex", "sitemap-exclusion"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url",
+        "cross-tenant-content-or-metadata-contamination"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented for first-batch adjacent routes by degov#1039."
+      }
+    },
+    {
+      "id": "dao.robots",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1023",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://demo.degov.ai/robots.txt",
+      "additionalFixtureUrls": ["https://lisk.degov.ai/robots.txt"],
+      "canonicalPattern": "<dao.siteUrl>/robots.txt",
+      "intent": "discovery-endpoint",
+      "expectedStatus": 200,
+      "expectedContentType": "text/plain",
+      "indexPolicy": "not-page",
+      "rawContentRequirement": "Robots endpoint returns parseable robots text, declares the canonical sitemap, and does not serve the application shell.",
+      "sitemap": "not-applicable",
+      "localePolicy": "not-applicable",
+      "metadata": {
+        "required": [],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "none"
+      },
+      "structuredData": {
+        "policy": "none",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["robots-text", "sitemap-declaration", "not-html-shell"],
+        "preview": ["raw-fetch", "content-type"],
+        "postDeploy": ["raw-fetch", "content-type"]
+      },
+      "releaseBlockingAssertions": [
+        "robots-or-sitemap-html-shell",
+        "wrong-host-canonical-or-og-url"
+      ],
+      "dryRun": {
+        "status": "known-fail",
+        "notes": "Fake-200 robots app-shell fixture is represented here; 2026-08-04 public readback still observed text/html app shell."
+      }
+    },
+    {
+      "id": "dao.sitemap",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1023",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://demo.degov.ai/sitemap.xml",
+      "additionalFixtureUrls": ["https://lisk.degov.ai/sitemap.xml"],
+      "canonicalPattern": "<dao.siteUrl>/sitemap.xml",
+      "intent": "discovery-endpoint",
+      "expectedStatus": 200,
+      "expectedContentType": "application/xml",
+      "indexPolicy": "not-page",
+      "rawContentRequirement": "Sitemap endpoint returns parseable XML containing only canonical, valid, public, host-local DAO URLs.",
+      "sitemap": "not-applicable",
+      "localePolicy": "not-applicable",
+      "metadata": {
+        "required": [],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "none"
+      },
+      "structuredData": {
+        "policy": "none",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["sitemap-xml-parse", "not-html-shell", "lastmod-real-content-change", "host-local-urls-only"],
+        "preview": ["raw-fetch", "content-type"],
+        "postDeploy": ["raw-fetch", "content-type", "second-dao-host-readback"]
+      },
+      "releaseBlockingAssertions": [
+        "robots-or-sitemap-html-shell",
+        "lastmod-not-backed-by-content-change",
+        "cross-tenant-sitemap-contamination",
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url"
+      ],
+      "dryRun": {
+        "status": "known-fail",
+        "notes": "Fake-200 sitemap app-shell fixture is represented here; 2026-08-04 public readback still observed text/html app shell."
+      }
+    },
+    {
+      "id": "dao.preview-staging",
+      "product": "dao-site",
+      "repository": "ringecosystem/degov",
+      "ownerIssue": "https://github.com/ringecosystem/degov/issues/1025",
+      "priority": "P0",
+      "caseTypes": ["staging"],
+      "fixtureUrl": "https://degov-dev.vercel.app/",
+      "canonicalPattern": "none-or-production-canonical-only",
+      "intent": "staging",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "noindex-or-excluded",
+      "rawContentRequirement": "Preview/staging content must not become a production sitemap target or wrong-host canonical authority.",
+      "sitemap": "exclude",
+      "localePolicy": "not-applicable",
+      "metadata": {
+        "required": ["no-production-sitemap-entry"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "absolute-https-public-if-present"
+      },
+      "structuredData": {
+        "policy": "none",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["host-source-validation"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["not-applicable"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url"
+      ],
+      "dryRun": {
+        "status": "known-gap",
+        "notes": "Preview/staging canonical policy still requires product confirmation."
+      }
+    },
+    {
+      "id": "atlas.home",
+      "product": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerIssue": "https://github.com/ringecosystem/degov-agent-api/issues/251",
+      "priority": "P0",
+      "caseTypes": ["valid"],
+      "fixtureUrl": "https://atlas.degov.ai/",
+      "canonicalPattern": "https://atlas.degov.ai/",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Server-rendered Atlas identity and navigation to DAO and governance surfaces.",
+      "sitemap": "include",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["WebSite"]
+      },
+      "checks": {
+        "ci": ["metadata-contract", "sitemap-entry"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-noindex"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov-agent-api#285."
+      }
+    },
+    {
+      "id": "atlas.dao-directory",
+      "product": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerIssue": "https://github.com/ringecosystem/degov-agent-api/issues/251",
+      "priority": "P0",
+      "caseTypes": ["valid", "query-filter"],
+      "fixtureUrl": "https://atlas.degov.ai/daos",
+      "canonicalPattern": "https://atlas.degov.ai/daos",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Server-rendered DAO directory identity, covered DAO names, and crawlable DAO detail links.",
+      "sitemap": "include",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["CollectionPage", "ItemList"]
+      },
+      "checks": {
+        "ci": ["metadata-contract", "metadata-safe-escaping", "sitemap-entry", "query-canonical-collapse"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch", "sitemap-sampled-url"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-noindex",
+        "approved-public-route-loading-shell",
+        "dynamic-metadata-jsonld-unsafe-escaping",
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "The first route-policy baseline approved Atlas /daos; degov-agent-api#285 owns the bounded allowlist."
+      }
+    },
+    {
+      "id": "atlas.dao-detail-valid",
+      "product": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerIssue": "https://github.com/ringecosystem/degov-agent-api/issues/251",
+      "priority": "P0",
+      "caseTypes": ["valid", "temporary-failure"],
+      "fixtureUrl": "https://atlas.degov.ai/daos/<daoId>",
+      "canonicalPattern": "https://atlas.degov.ai/daos/<daoId>",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Visible DAO name, governance context, and source/provenance content match metadata.",
+      "sitemap": "include-valid-only",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["Organization", "BreadcrumbList"]
+      },
+      "checks": {
+        "ci": ["valid-dao-metadata", "metadata-safe-escaping", "invalid-dao-not-indexable", "sitemap-entry"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch", "sitemap-sampled-url"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "dynamic-metadata-jsonld-unsafe-escaping",
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov-agent-api#285."
+      }
+    },
+    {
+      "id": "atlas.governance",
+      "product": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerIssue": "https://github.com/ringecosystem/degov-agent-api/issues/251",
+      "priority": "P0",
+      "caseTypes": ["valid", "query-filter"],
+      "fixtureUrl": "https://atlas.degov.ai/governance",
+      "canonicalPattern": "https://atlas.degov.ai/governance",
+      "intent": "public",
+      "expectedStatus": 200,
+      "expectedContentType": "text/html",
+      "indexPolicy": "index",
+      "rawContentRequirement": "Server-rendered governance feed identity and stable public links.",
+      "sitemap": "include",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["title", "description", "canonical", "og:url", "og:image", "twitter:card"],
+        "canonicalMustEqualOgUrl": true,
+        "shareImage": "absolute-https-public"
+      },
+      "structuredData": {
+        "policy": "defer-until-entity-map",
+        "candidateTypes": ["CollectionPage"]
+      },
+      "checks": {
+        "ci": ["metadata-contract", "metadata-safe-escaping", "sitemap-entry", "query-canonical-collapse"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "wrong-host-canonical-or-og-url",
+        "approved-public-route-noindex",
+        "dynamic-metadata-jsonld-unsafe-escaping"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "Implemented by degov-agent-api#285."
+      }
+    },
+    {
+      "id": "atlas.excluded-dynamic-routes",
+      "product": "atlas",
+      "repository": "ringecosystem/degov-agent-api",
+      "ownerIssue": "https://github.com/ringecosystem/degov-agent-api/issues/251",
+      "priority": "P0",
+      "caseTypes": ["redirect", "private", "query-filter", "invalid"],
+      "fixtureUrl": "https://atlas.degov.ai/participants/<participantId>",
+      "canonicalPattern": "none",
+      "intent": "deferred",
+      "expectedStatus": "404-or-noindex-or-redirect",
+      "expectedContentType": "text/html",
+      "indexPolicy": "exclude",
+      "rawContentRequirement": "Redirect-only proposal, participant/address, invalid, and query/filter routes are not declared canonical Atlas landing pages.",
+      "sitemap": "exclude",
+      "localePolicy": "primary-only",
+      "metadata": {
+        "required": ["no-sitemap-entry"],
+        "canonicalMustEqualOgUrl": false,
+        "shareImage": "none"
+      },
+      "structuredData": {
+        "policy": "none",
+        "candidateTypes": []
+      },
+      "checks": {
+        "ci": ["sitemap-exclusion", "invalid-route-not-indexable"],
+        "preview": ["raw-fetch"],
+        "postDeploy": ["raw-fetch"]
+      },
+      "releaseBlockingAssertions": [
+        "sitemap-invalid-redirected-noindex-or-wrong-host-url",
+        "invalid-resource-indexable-thin-200"
+      ],
+      "dryRun": {
+        "status": "pass-after-fix",
+        "notes": "First-batch exclusions implemented by degov-agent-api#285."
+      }
+    }
+  ]
+}
