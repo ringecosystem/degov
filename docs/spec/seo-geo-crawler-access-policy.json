@@ -608,9 +608,9 @@
       "provider": "X/Twitter",
       "token": "Twitterbot",
       "purposeClass": "social-preview",
-      "officialSource": "https://developer.x.com/en/docs/x-for-websites/cards/overview/abouts-cards",
-      "robotsBehavior": "X/Twitter Cards require public metadata and media fetchability for previews.",
-      "identityVerification": "Use platform verified-bot signals or aggregate edge evidence; preserve unverified requests separately.",
+      "officialSource": "https://docs.x.com/overview",
+      "robotsBehavior": "X/Twitter card metadata must stay fetchable for previews, but this contract does not treat the current generic docs page as crawler-specific Twitterbot verification.",
+      "identityVerification": "X/Twitter crawler-specific official token and verification documentation was not confirmed in the cited source; classify matching requests as unverified unless the edge platform supplies a verified-bot signal.",
       "desiredPolicy": "allow",
       "productScope": [
         "home",
@@ -630,9 +630,9 @@
       ],
       "rollback": "Restore previous social-preview handling and confirm X/Twitter card fetches.",
       "tokenType": "http-user-agent",
-      "officialSourceType": "provider-crawler-documentation",
-      "identityVerificationMethod": "provider-ip-rdns-or-verified-bot-signal",
-      "maxIdentityState": "verified"
+      "officialSourceType": "unavailable",
+      "identityVerificationMethod": "unavailable",
+      "maxIdentityState": "unverified"
     },
     {
       "id": "slackbot",
@@ -700,8 +700,8 @@
       "token": "TelegramBot",
       "purposeClass": "social-preview",
       "officialSource": "https://core.telegram.org/bots/api",
-      "robotsBehavior": "Telegram link preview behavior must be treated as social-preview fetching, not indexing or training.",
-      "identityVerification": "Telegram does not publish a crawler-specific verification method in the cited source; classify matching requests as unverified unless the edge platform supplies a verified-bot signal.",
+      "robotsBehavior": "Telegram link previews are treated operationally as social-preview fetching, but this contract does not treat the Bot API page as crawler-specific TelegramBot verification.",
+      "identityVerification": "Telegram crawler-specific official token and verification documentation was not confirmed in the cited source; classify matching requests as unverified unless the edge platform supplies a verified-bot signal.",
       "desiredPolicy": "allow",
       "productScope": [
         "home",
@@ -720,7 +720,7 @@
       ],
       "rollback": "Restore previous social-preview handling and confirm Telegram preview fetches.",
       "tokenType": "http-user-agent",
-      "officialSourceType": "provider-generic-reference",
+      "officialSourceType": "unavailable",
       "identityVerificationMethod": "unavailable",
       "maxIdentityState": "unverified"
     }
@@ -1059,8 +1059,8 @@
       "allowedScope": "atlas.degov.ai application robots/meta/status behavior only."
     },
     {
-      "ownerRepository": "infrastructure policy repository",
-      "when": "Open only for CDN/WAF, Cloudflare managed robots, DNS, hosting, or GitOps rule changes after the policy is approved.",
+      "ownerRepository": "ringecosystem/degov-agent-api",
+      "when": "Open only for Atlas-owned or shared infrastructure policy changes when the owning deployment/GitOps path is in degov-agent-api.",
       "allowedScope": "Infrastructure-owned crawler allow/block/challenge policy and rollback runbook only."
     }
   ],
@@ -1090,34 +1090,32 @@
     "incidentRule": "If a rule exposes private, transactional, preview, or staging content, treat it as a security incident and roll back before further SEO/GEO changes."
   },
   "approvalState": {
-    "status": "approved-policy-contract",
+    "status": "pending-approval",
     "linkedUmbrellaIssue": "https://github.com/ringecosystem/degov/issues/714",
-    "approvalRecords": [
+    "requiredApprovalRecords": [
       {
         "role": "product",
-        "decision": "approve public search, AI reference, user-triggered fetch, and social preview defaults for implementation follow-ups",
-        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+        "requiredEvidence": "A concrete issue comment or review approving the surface and purpose policy matrix version."
       },
       {
         "role": "security",
-        "decision": "approve block-or-auth-required default for private/write/preview/staging surfaces and require incident rollback on exposure",
-        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+        "requiredEvidence": "A concrete issue comment or review approving private/write/preview/staging defaults and incident rollback."
       },
       {
         "role": "infrastructure",
-        "decision": "approve control-layer mapping and require aggregate verified-bot evidence before CDN/WAF implementation claims",
-        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+        "requiredEvidence": "A concrete issue comment or review approving control-layer ownership, verified-bot observation, rollout, and rollback requirements."
       },
       {
         "role": "legal",
-        "decision": "approve preserving model-training restrictions by default; any widening requires a future explicit legal approval",
-        "evidenceLink": "https://github.com/ringecosystem/degov/issues/1026"
+        "requiredEvidence": "A concrete issue comment or review approving training restrictions and any future widening process."
       }
     ],
+    "approvalRecords": [],
     "limitations": [
       "private CDN/WAF rules and raw logs are not published",
       "training access remains blocked by default",
-      "implementation follow-ups must be opened only in owning repositories"
+      "implementation follow-ups must be opened only in owning repositories",
+      "policy cannot be treated as approved until required approval records link concrete comments or reviews"
     ]
   },
   "authoritativeRuleMap": [
@@ -1132,6 +1130,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-home",
       "ownerRole": "official-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "official-site owner",
       "followupTarget": "ringecosystem/degov-home"
@@ -1147,6 +1146,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-home",
       "ownerRole": "official-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "official-site owner",
       "followupTarget": "ringecosystem/degov-home"
@@ -1161,6 +1161,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-home",
       "ownerRole": "official-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "official-site owner",
       "followupTarget": "ringecosystem/degov-home"
@@ -1174,8 +1175,9 @@
         "cdn-waf",
         "gitops-infrastructure"
       ],
-      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRepository": "ringecosystem/degov-home",
       "ownerRole": "official-site owner plus legal/security/infrastructure owners",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "infrastructure/security owner",
       "followupTarget": "ringecosystem/degov-home"
@@ -1191,6 +1193,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-home",
       "ownerRole": "official-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "official-site owner",
       "followupTarget": "ringecosystem/degov-home"
@@ -1206,6 +1209,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-docs",
       "ownerRole": "docs owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "docs owner",
       "followupTarget": "ringecosystem/degov-docs"
@@ -1221,6 +1225,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-docs",
       "ownerRole": "docs owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "docs owner",
       "followupTarget": "ringecosystem/degov-docs"
@@ -1235,6 +1240,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-docs",
       "ownerRole": "docs owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "docs owner",
       "followupTarget": "ringecosystem/degov-docs"
@@ -1248,8 +1254,9 @@
         "cdn-waf",
         "gitops-infrastructure"
       ],
-      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRepository": "ringecosystem/degov-docs",
       "ownerRole": "docs owner plus legal/security/infrastructure owners",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "infrastructure/security owner",
       "followupTarget": "ringecosystem/degov-docs"
@@ -1265,6 +1272,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-docs",
       "ownerRole": "docs owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "docs owner",
       "followupTarget": "ringecosystem/degov-docs"
@@ -1280,6 +1288,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-square",
       "ownerRole": "square owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "square owner",
       "followupTarget": "ringecosystem/degov-square"
@@ -1295,6 +1304,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-square",
       "ownerRole": "square owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "square owner",
       "followupTarget": "ringecosystem/degov-square"
@@ -1309,6 +1319,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-square",
       "ownerRole": "square owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "square owner",
       "followupTarget": "ringecosystem/degov-square"
@@ -1322,8 +1333,9 @@
         "cdn-waf",
         "gitops-infrastructure"
       ],
-      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRepository": "ringecosystem/degov-square",
       "ownerRole": "square owner plus legal/security/infrastructure owners",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "infrastructure/security owner",
       "followupTarget": "ringecosystem/degov-square"
@@ -1339,6 +1351,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-square",
       "ownerRole": "square owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "square owner",
       "followupTarget": "ringecosystem/degov-square"
@@ -1354,6 +1367,7 @@
       ],
       "ownerRepository": "ringecosystem/degov",
       "ownerRole": "DAO-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "DAO-site owner",
       "followupTarget": "ringecosystem/degov"
@@ -1369,6 +1383,7 @@
       ],
       "ownerRepository": "ringecosystem/degov",
       "ownerRole": "DAO-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "DAO-site owner",
       "followupTarget": "ringecosystem/degov"
@@ -1383,6 +1398,7 @@
       ],
       "ownerRepository": "ringecosystem/degov",
       "ownerRole": "DAO-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "DAO-site owner",
       "followupTarget": "ringecosystem/degov"
@@ -1396,8 +1412,9 @@
         "cdn-waf",
         "gitops-infrastructure"
       ],
-      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRepository": "ringecosystem/degov",
       "ownerRole": "DAO-site owner plus legal/security/infrastructure owners",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "infrastructure/security owner",
       "followupTarget": "ringecosystem/degov"
@@ -1413,6 +1430,7 @@
       ],
       "ownerRepository": "ringecosystem/degov",
       "ownerRole": "DAO-site owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "DAO-site owner",
       "followupTarget": "ringecosystem/degov"
@@ -1428,6 +1446,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-agent-api",
       "ownerRole": "Atlas owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "Atlas owner",
       "followupTarget": "ringecosystem/degov-agent-api"
@@ -1443,6 +1462,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-agent-api",
       "ownerRole": "Atlas owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "Atlas owner",
       "followupTarget": "ringecosystem/degov-agent-api"
@@ -1457,6 +1477,7 @@
       ],
       "ownerRepository": "ringecosystem/degov-agent-api",
       "ownerRole": "Atlas owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "Atlas owner",
       "followupTarget": "ringecosystem/degov-agent-api"
@@ -1470,8 +1491,9 @@
         "cdn-waf",
         "gitops-infrastructure"
       ],
-      "ownerRepository": "owning application repository plus infrastructure policy repository",
+      "ownerRepository": "ringecosystem/degov-agent-api",
       "ownerRole": "Atlas owner plus legal/security/infrastructure owners",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "infrastructure/security owner",
       "followupTarget": "ringecosystem/degov-agent-api"
@@ -1487,9 +1509,90 @@
       ],
       "ownerRepository": "ringecosystem/degov-agent-api",
       "ownerRole": "Atlas owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
       "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
       "rollbackOwner": "Atlas owner",
       "followupTarget": "ringecosystem/degov-agent-api"
+    },
+    {
+      "surface": "private-transactional-preview-staging",
+      "purposeClass": "search-index",
+      "desiredPolicy": "block-or-auth-required",
+      "authoritativeLayers": [
+        "authentication",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application or infrastructure repository",
+      "ownerRole": "product owner plus security owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "owning application or infrastructure repository"
+    },
+    {
+      "surface": "private-transactional-preview-staging",
+      "purposeClass": "ai-search-reference",
+      "desiredPolicy": "block-or-auth-required",
+      "authoritativeLayers": [
+        "authentication",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application or infrastructure repository",
+      "ownerRole": "product owner plus security owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "owning application or infrastructure repository"
+    },
+    {
+      "surface": "private-transactional-preview-staging",
+      "purposeClass": "user-triggered-fetch",
+      "desiredPolicy": "block-or-auth-required",
+      "authoritativeLayers": [
+        "authentication",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application or infrastructure repository",
+      "ownerRole": "product owner plus security owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "owning application or infrastructure repository"
+    },
+    {
+      "surface": "private-transactional-preview-staging",
+      "purposeClass": "model-training",
+      "desiredPolicy": "block-or-auth-required",
+      "authoritativeLayers": [
+        "authentication",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application or infrastructure repository",
+      "ownerRole": "product owner plus security owner plus legal/security/infrastructure owners",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "owning application or infrastructure repository"
+    },
+    {
+      "surface": "private-transactional-preview-staging",
+      "purposeClass": "social-preview",
+      "desiredPolicy": "block-or-auth-required",
+      "authoritativeLayers": [
+        "authentication",
+        "cdn-waf",
+        "gitops-infrastructure"
+      ],
+      "ownerRepository": "owning application or infrastructure repository",
+      "ownerRole": "product owner plus security owner",
+      "infrastructureRepository": "ringecosystem/degov-agent-api",
+      "conflictRule": "The most restrictive approved layer wins for private/write/staging routes; public route crawler conflicts require owner review before rollout.",
+      "rollbackOwner": "infrastructure/security owner",
+      "followupTarget": "owning application or infrastructure repository"
     }
   ]
 }

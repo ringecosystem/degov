@@ -66,6 +66,7 @@ const sourceTypes = new Set([
   "provider-crawler-documentation",
   "provider-published-token-list",
   "provider-generic-reference",
+  "unavailable",
 ]);
 const verificationMethods = new Set([
   "provider-ip-rdns-or-verified-bot-signal",
@@ -162,6 +163,9 @@ const expectedAgents = {
     tokenType: "http-user-agent",
     purposeClass: "social-preview",
     desiredPolicy: "allow",
+    officialSourceType: "unavailable",
+    identityVerificationMethod: "unavailable",
+    maxIdentityState: "unverified",
   },
   slackbot: {
     token: "Slackbot-LinkExpanding",
@@ -180,6 +184,9 @@ const expectedAgents = {
     tokenType: "http-user-agent",
     purposeClass: "social-preview",
     desiredPolicy: "allow",
+    officialSourceType: "unavailable",
+    identityVerificationMethod: "unavailable",
+    maxIdentityState: "unverified",
   },
 };
 const requiredLogFields = new Set([
@@ -337,6 +344,27 @@ for (const agent of policy.crawlerAgents) {
     expectedAgents[agent.id].desiredPolicy,
     `${agent.id} desiredPolicy is fixed by policy`
   );
+  if (expectedAgents[agent.id].officialSourceType) {
+    assert.equal(
+      agent.officialSourceType,
+      expectedAgents[agent.id].officialSourceType,
+      `${agent.id} officialSourceType`
+    );
+  }
+  if (expectedAgents[agent.id].identityVerificationMethod) {
+    assert.equal(
+      agent.identityVerificationMethod,
+      expectedAgents[agent.id].identityVerificationMethod,
+      `${agent.id} identityVerificationMethod`
+    );
+  }
+  if (expectedAgents[agent.id].maxIdentityState) {
+    assert.equal(
+      agent.maxIdentityState,
+      expectedAgents[agent.id].maxIdentityState,
+      `${agent.id} maxIdentityState`
+    );
+  }
   assert.ok(agent.provider.length > 1, `${agent.id} provider`);
   assert.ok(tokenTypes.has(agent.tokenType), `${agent.id} tokenType`);
   assert.ok(requiredPurposeClasses.has(agent.purposeClass), `${agent.id} purposeClass`);
@@ -443,12 +471,12 @@ for (const behavior of policy.currentProductionBehavior) {
 assert.ok(Array.isArray(policy.authoritativeRuleMap));
 assert.equal(
   policy.authoritativeRuleMap.length,
-  requiredPublicSurfaces.size * requiredPurposeClasses.size,
-  "authoritative map must cover every public surface x purpose"
+  requiredSurfaceIds.size * requiredPurposeClasses.size,
+  "authoritative map must cover every surface x purpose"
 );
 const authoritativeKeys = new Set();
 for (const rule of policy.authoritativeRuleMap) {
-  assert.ok(requiredPublicSurfaces.has(rule.surface), `rule surface ${rule.surface}`);
+  assert.ok(requiredSurfaceIds.has(rule.surface), `rule surface ${rule.surface}`);
   assert.ok(requiredPurposeClasses.has(rule.purposeClass), `rule purpose ${rule.purposeClass}`);
   const key = `${rule.surface}/${rule.purposeClass}`;
   assert.ok(!authoritativeKeys.has(key), `duplicate authoritative rule ${key}`);
@@ -463,7 +491,9 @@ for (const rule of policy.authoritativeRuleMap) {
     assert.ok(rule.authoritativeLayers.includes("gitops-infrastructure"), `${key} gitops layer`);
     assert.match(rule.ownerRole, /legal\/security\/infrastructure/);
   }
-  assert.ok(rule.ownerRepository.length > 3, `${key} ownerRepository`);
+  assert.match(rule.ownerRepository, /^ringecosystem\/|^owning application or infrastructure repository$/);
+  assert.notEqual(rule.ownerRepository, "infrastructure policy repository");
+  assert.match(rule.infrastructureRepository, /^ringecosystem\//, `${key} infrastructureRepository`);
   assert.ok(rule.ownerRole.length > 3, `${key} ownerRole`);
   assert.match(rule.conflictRule, /most restrictive approved layer wins/);
   assert.ok(rule.rollbackOwner.length > 3, `${key} rollbackOwner`);
@@ -489,12 +519,15 @@ assert.ok(Array.isArray(policy.implementationFollowups));
 assert.ok(policy.implementationFollowups.length >= 6);
 assert.ok(
   policy.implementationFollowups.some(
-    (followup) => followup.ownerRepository === "infrastructure policy repository"
+    (followup) =>
+      followup.ownerRepository === "ringecosystem/degov-agent-api" &&
+      followup.allowedScope.includes("Infrastructure-owned")
   ),
   "missing infrastructure follow-up boundary"
 );
 for (const followup of policy.implementationFollowups) {
-  assert.match(followup.ownerRepository, /^ringecosystem\/|^infrastructure policy repository$/);
+  assert.match(followup.ownerRepository, /^ringecosystem\//);
+  assert.notEqual(followup.ownerRepository, "infrastructure policy repository");
   assert.match(followup.when, /Open only/);
   assert.ok(followup.allowedScope.length > 20);
 }
@@ -509,28 +542,32 @@ assert.ok(policy.rollout.rollbackTriggers.includes("training access widened with
 assert.match(policy.rollout.rollbackProcedure, /Revert/);
 assert.match(policy.rollout.incidentRule, /security incident/);
 
-assert.equal(policy.approvalState.status, "approved-policy-contract");
+assert.equal(policy.approvalState.status, "pending-approval");
 assert.equal(
   policy.approvalState.linkedUmbrellaIssue,
   "https://github.com/ringecosystem/degov/issues/714"
 );
-assert.ok(Array.isArray(policy.approvalState.approvalRecords));
-const approvalRoles = new Set(
-  policy.approvalState.approvalRecords.map((record) => record.role)
+assert.deepEqual(policy.approvalState.approvalRecords, []);
+assert.ok(Array.isArray(policy.approvalState.requiredApprovalRecords));
+const requiredApprovalRoles = new Set(
+  policy.approvalState.requiredApprovalRecords.map((record) => record.role)
 );
 for (const owner of requiredOwners) {
-  assert.ok(approvalRoles.has(owner), `missing approval record ${owner}`);
+  assert.ok(requiredApprovalRoles.has(owner), `missing required approval record ${owner}`);
 }
-for (const record of policy.approvalState.approvalRecords) {
+for (const record of policy.approvalState.requiredApprovalRecords) {
   assert.ok(requiredOwners.has(record.role), `approval role ${record.role}`);
-  assert.ok(record.decision.length > 30, `${record.role} decision`);
-  assert.match(record.evidenceLink, /^https:\/\/github\.com\/ringecosystem\/degov\/issues\/1026/);
+  assert.match(record.requiredEvidence, /concrete issue comment or review/);
   if (record.role === "legal") {
-    assert.match(record.decision, /preserving model-training restrictions/);
-    assert.match(record.decision, /future explicit legal approval/);
+    assert.match(record.requiredEvidence, /training restrictions/);
   }
 }
 assert.ok(policy.approvalState.limitations.includes("training access remains blocked by default"));
+assert.ok(
+  policy.approvalState.limitations.includes(
+    "policy cannot be treated as approved until required approval records link concrete comments or reviews"
+  )
+);
 
 console.log(
   `SEO/GEO crawler policy ok: ${policy.crawlerAgents.length} agents, ${policy.productSurfaces.length} surfaces, ${policy.controlLayers.length} control layers`
