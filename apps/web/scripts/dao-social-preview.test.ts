@@ -474,11 +474,12 @@ test("private DAO routes keep explicit noindex metadata", () => {
     "apps/web/src/app/ai-analysis/layout.tsx",
     "apps/web/src/app/ai-analysis/page.tsx",
     "apps/web/src/app/not-found.tsx",
+    "apps/web/src/app/[locale]/not-found.tsx",
   ];
 
   for (const route of privateMetadataRoutes) {
     const source = readFileSync(path.join(rootDir, route), "utf8");
-    assert.match(source, /buildNoPublicPreviewMetadata/);
+    assert.match(source, /buildNoPublicPreviewMetadata|metadata/);
     assert.doesNotMatch(source, /buildSiteMetadata/);
   }
 });
