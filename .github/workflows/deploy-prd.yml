@@ -44,6 +44,7 @@ jobs:
           vercel_group: itering
           preview_output: true
           prod_mode: true
+          alias_domain: "lisk.degov.ai"
           project_name: "degov"
           script_run: false
           dist_path: .
