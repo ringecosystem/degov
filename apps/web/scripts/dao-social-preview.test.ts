@@ -15,6 +15,7 @@ import {
 } from "../src/lib/metadata.ts";
 import {
   getPublicOriginFromHost,
+  shouldUseRequestSiteUrl,
   withRequestSiteUrl,
 } from "../src/lib/request-origin.ts";
 
@@ -157,6 +158,38 @@ test("request host overrides stale config site URL for public metadata", () => {
       description: "Use the current DAO host for public sharing metadata.",
     }),
     "https://demo.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
+  );
+});
+
+test("single DAO mode only overrides known stale Vercel config origins", () => {
+  const staleVercelConfig = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+
+  assert.equal(
+    shouldUseRequestSiteUrl({
+      config: staleVercelConfig,
+      requestOrigin: "https://demo.degov.ai",
+      requiresOrigin: false,
+    }),
+    true
+  );
+  assert.equal(
+    shouldUseRequestSiteUrl({
+      config: staleVercelConfig,
+      requestOrigin: "https://evil.example",
+      requiresOrigin: false,
+    }),
+    false
+  );
+  assert.equal(
+    shouldUseRequestSiteUrl({
+      config: demoConfig,
+      requestOrigin: "https://evil.example",
+      requiresOrigin: false,
+    }),
+    false
   );
 });
 
