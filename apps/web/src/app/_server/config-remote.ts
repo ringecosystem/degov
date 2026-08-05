@@ -61,7 +61,9 @@ export async function getConfigCachedByHost(): Promise<Config> {
         const yamlText = await res.text();
         const result = loadConfigYaml(yamlText);
 
-        return withRequestSiteUrl(result, publicRequestOrigin);
+        return requiresOrigin
+          ? withRequestSiteUrl(result, publicRequestOrigin)
+          : result;
       } catch (err) {
         console.error("[Cache] Remote config failed:", err);
         throw err;

@@ -9,10 +9,20 @@ export function getPublicOriginFromHost(
 ): string | null {
   const value = host?.split(",")[0]?.trim();
   if (!value) return null;
+  if (/[/?#@\\[\]\s]/.test(value)) return null;
 
   try {
     const url = new URL(`https://${value}`);
-    if (url.hostname === "localhost" || isIpv4Host(url.hostname)) {
+    if (
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash ||
+      url.hostname === "localhost" ||
+      url.hostname.includes(":") ||
+      isIpv4Host(url.hostname)
+    ) {
       return null;
     }
 

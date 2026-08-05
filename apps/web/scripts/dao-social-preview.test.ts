@@ -162,7 +162,13 @@ test("request host overrides stale config site URL for public metadata", () => {
 
 test("request host override rejects private or invalid hosts", () => {
   assert.equal(getPublicOriginFromHost("127.0.0.1:3000"), null);
+  assert.equal(getPublicOriginFromHost("[::1]:3000"), null);
+  assert.equal(getPublicOriginFromHost("::1"), null);
   assert.equal(getPublicOriginFromHost("localhost:3000"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai@evil.com"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai/path"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai?x=1"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai#fragment"), null);
   assert.equal(getPublicOriginFromHost("not a host"), null);
 });
 
