@@ -285,6 +285,21 @@ test("explicit public site URL environment accepts full HTTPS origins", () => {
   );
 });
 
+test("explicit public site URL environment rejects non-origin URLs", () => {
+  for (const value of [
+    "http://demo.degov.ai",
+    "https://demo.degov.ai/path",
+    "https://demo.degov.ai?x=1",
+    "https://demo.degov.ai#hash",
+    "https://demo.degov.ai@evil.com",
+  ]) {
+    assert.equal(
+      getPublicOriginFromEnvironment({ DEGOV_PUBLIC_SITE_URL: value }),
+      null
+    );
+  }
+});
+
 test("production environment origin does not replace real DAO hosts", () => {
   assert.equal(
     shouldUseEnvironmentSiteUrl({

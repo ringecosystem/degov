@@ -61,7 +61,19 @@ function getPublicOriginFromUrlOrHost(value: string | undefined): string | null 
   if (!value) return null;
 
   try {
-    return getPublicOriginFromHost(new URL(value).host);
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+
+    return getPublicOriginFromHost(url.host);
   } catch {
     return getPublicOriginFromHost(value);
   }
