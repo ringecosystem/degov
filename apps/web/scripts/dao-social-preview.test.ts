@@ -201,7 +201,7 @@ test("request site URL override happens after remote config cache lookup", () =>
   const cacheReturnIndex = source.indexOf("const result = await get();");
   const overrideIndex = source.indexOf("shouldUseRequestSiteUrl", cacheReturnIndex);
 
-  assert.ok(cacheReturnIndex > 0, "config cache result must be read explicitly");
+  assert.ok(cacheReturnIndex >= 0, "config cache result must be read explicitly");
   assert.ok(
     overrideIndex > cacheReturnIndex,
     "request host override must run after cache lookup so cache hits are normalized"
