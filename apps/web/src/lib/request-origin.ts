@@ -4,6 +4,22 @@ function isIpv4Host(hostname: string): boolean {
   return /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
 }
 
+function getHostname(origin: string): string | null {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function isDegovOwnedHost(hostname: string): boolean {
+  return hostname === "degov.ai" || hostname.endsWith(".degov.ai");
+}
+
+function isVercelHost(hostname: string): boolean {
+  return hostname === "vercel.app" || hostname.endsWith(".vercel.app");
+}
+
 export function getPublicOriginFromHost(
   host: string | null | undefined
 ): string | null {
@@ -30,6 +46,27 @@ export function getPublicOriginFromHost(
   } catch {
     return null;
   }
+}
+
+export function shouldUseRequestSiteUrl(params: {
+  config: Config;
+  requestOrigin: string | null;
+  requiresOrigin: boolean;
+}): boolean {
+  const { config, requestOrigin, requiresOrigin } = params;
+  if (!requestOrigin) return false;
+  if (requiresOrigin) return true;
+
+  const configuredSiteUrl = config.siteUrl?.trim();
+  if (!configuredSiteUrl) return false;
+
+  const configuredHost = getHostname(configuredSiteUrl);
+  const requestHost = getHostname(requestOrigin);
+  if (!configuredHost || !requestHost || configuredHost === requestHost) {
+    return false;
+  }
+
+  return isVercelHost(configuredHost) && isDegovOwnedHost(requestHost);
 }
 
 export function withRequestSiteUrl(

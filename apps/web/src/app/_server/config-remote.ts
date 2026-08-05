@@ -3,7 +3,11 @@ import { headers } from "next/headers";
 
 import { getDaoConfigServer } from "@/lib/config";
 import { loadConfigYaml } from "@/lib/config-yaml";
-import { getPublicOriginFromHost, withRequestSiteUrl } from "@/lib/request-origin";
+import {
+  getPublicOriginFromHost,
+  shouldUseRequestSiteUrl,
+  withRequestSiteUrl,
+} from "@/lib/request-origin";
 import type { Config } from "@/types/config";
 import { degovApiDaoConfigServer } from "@/utils/remote-api";
 
@@ -61,7 +65,11 @@ export async function getConfigCachedByHost(): Promise<Config> {
         const yamlText = await res.text();
         const result = loadConfigYaml(yamlText);
 
-        return requiresOrigin
+        return shouldUseRequestSiteUrl({
+          config: result,
+          requestOrigin: publicRequestOrigin,
+          requiresOrigin,
+        })
           ? withRequestSiteUrl(result, publicRequestOrigin)
           : result;
       } catch (err) {
