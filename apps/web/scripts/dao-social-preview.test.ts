@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  buildHomeMetadata,
   buildNoPublicPreviewMetadata,
   buildProposalDirectoryMetadata,
   buildProposalMetadata,
@@ -133,8 +134,9 @@ test("DAO social preview fallback is a public 1200x630 PNG asset", () => {
 
 test("DAO public metadata uses host-correct large-image social previews", () => {
   const siteMetadata = buildSiteMetadata(demoConfig);
+  const homeMetadata = buildHomeMetadata(demoConfig);
 
-  assert.equal(siteMetadata.alternates?.canonical, "https://demo.degov.ai");
+  assert.equal(homeMetadata.alternates?.canonical, "https://demo.degov.ai");
   assertSocialMetadata(siteMetadata, "https://demo.degov.ai");
   assertSocialMetadata(
     buildProposalDirectoryMetadata(demoConfig),
