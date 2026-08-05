@@ -93,15 +93,15 @@ export async function getConfigCachedByHost(): Promise<Config> {
 
   const result = await get();
   const knownProductionOrigin = getKnownProductionOriginFromConfig(result);
-  if (knownProductionOrigin) {
-    return withRequestSiteUrl(result, knownProductionOrigin);
-  }
+  const normalizedResult = knownProductionOrigin
+    ? withRequestSiteUrl(result, knownProductionOrigin)
+    : result;
 
   return shouldUseRequestSiteUrl({
-    config: result,
+    config: normalizedResult,
     requestOrigin: publicRequestOrigin,
     requiresOrigin: !process.env.NEXT_PUBLIC_DEGOV_DAO,
   })
-    ? withRequestSiteUrl(result, publicRequestOrigin)
-    : result;
+    ? withRequestSiteUrl(normalizedResult, publicRequestOrigin)
+    : normalizedResult;
 }
