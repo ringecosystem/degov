@@ -114,14 +114,18 @@ test("proposal read analytics source avoids sensitive payload fields", () => {
 
 test("proposal page only renders read analytics after a public proposal resolves", () => {
   const pageSource = readSource("src/app/proposal/[id]/page.tsx");
+  const detailClientSource = readSource(
+    "src/app/proposal/[id]/proposal-detail-client.tsx"
+  );
   const componentSource = readSource(
     "src/app/proposal/[id]/proposal-read-analytics.tsx"
   );
 
-  assert.match(pageSource, /import \{ ProposalReadAnalytics \}/);
-  assert.match(pageSource, /proposal \? \(/);
-  assert.match(pageSource, /daoCode=\{config\.code\}/);
-  assert.match(pageSource, /proposalId=\{proposal\.proposalId\}/);
+  assert.doesNotMatch(pageSource, /import \{ ProposalReadAnalytics \}/);
+  assert.match(detailClientSource, /import \{ ProposalReadAnalytics \}/);
+  assert.match(detailClientSource, /data\?\.proposalId \? \(/);
+  assert.match(detailClientSource, /daoCode=\{daoConfig\?\.code \?\? ""\}/);
+  assert.match(detailClientSource, /proposalId=\{data\.proposalId\}/);
   assert.match(
     componentSource,
     /PROPOSAL_READ_EVENT_NAME}:\$\{params\.dao_slug_or_public_id}:\$\{params\.proposal_public_id}/
