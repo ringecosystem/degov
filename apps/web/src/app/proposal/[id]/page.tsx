@@ -6,6 +6,7 @@ import { ProposalDetailPublicSummary } from "../../_components/public-route-summ
 import { getActiveDaoConfig, getPublicProposalDetail } from "../../_server/public-seo";
 
 import { ProposalDetailClient } from "./proposal-detail-client";
+import { ProposalReadAnalytics } from "./proposal-read-analytics";
 
 type ProposalPageProps = {
   params: Promise<{ id: string }>;
@@ -35,6 +36,12 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
         proposal={proposal}
         failed={failed}
       />
+      {proposal ? (
+        <ProposalReadAnalytics
+          daoCode={config.code}
+          proposalId={proposal.proposalId}
+        />
+      ) : null}
       <ProposalDetailClient />
     </div>
   );
