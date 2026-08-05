@@ -22,7 +22,7 @@
       "name": "DeGov official website",
       "repository": "ringecosystem/degov-home",
       "representativeHost": "degov.ai",
-      "analyticsTagState": "access-gap",
+      "analyticsTagState": "live-readback-no-tag",
       "ownerState": "owner-required",
       "consentState": "approval-required",
       "customDomainBoundary": "first-party-degov-domain",
@@ -38,7 +38,7 @@
       "name": "DeGov documentation",
       "repository": "ringecosystem/degov-docs",
       "representativeHost": "docs.degov.ai",
-      "analyticsTagState": "access-gap",
+      "analyticsTagState": "live-readback-empty-google-property",
       "ownerState": "owner-required",
       "consentState": "approval-required",
       "customDomainBoundary": "first-party-degov-domain",
@@ -54,7 +54,7 @@
       "name": "DeGov Square",
       "repository": "ringecosystem/degov-square",
       "representativeHost": "square.degov.ai",
-      "analyticsTagState": "known-present-unverified",
+      "analyticsTagState": "live-readback-ga4-tag-present",
       "ownerState": "owner-required",
       "consentState": "approval-required",
       "customDomainBoundary": "first-party-degov-domain",
@@ -70,7 +70,7 @@
       "name": "Individual DAO governance sites",
       "repository": "ringecosystem/degov",
       "representativeHost": "demo.degov.ai and representative registry DAO hosts",
-      "analyticsTagState": "known-present-unverified",
+      "analyticsTagState": "registry-and-lisk-live-ga4-tag-present",
       "ownerState": "dao-owner-boundary-required",
       "consentState": "approval-required",
       "customDomainBoundary": "custom DAO domains may have separate ownership and consent authority",
@@ -86,7 +86,7 @@
       "name": "DeGov Atlas",
       "repository": "ringecosystem/degov-agent-api",
       "representativeHost": "atlas.degov.ai",
-      "analyticsTagState": "access-gap",
+      "analyticsTagState": "live-readback-no-tag",
       "ownerState": "owner-required",
       "consentState": "approval-required",
       "customDomainBoundary": "first-party-degov-domain",
@@ -98,6 +98,98 @@
       ]
     }
   ],
+  "liveAnalyticsInventory": {
+    "inventoryDate": "2026-08-05",
+    "evidenceScope": "Public production HTML readback plus checked-in public repository configuration. Private GA property ownership, consent-mode debug state, retention, and report access are not inferred from tag presence.",
+    "surfaces": [
+      {
+        "surface": "home",
+        "representativeUrl": "https://degov.ai/",
+        "repository": "ringecosystem/degov-home",
+        "tagReadback": {
+          "state": "no-public-tag-found",
+          "tagIds": [],
+          "gtagLoaderPresent": false,
+          "gtmLoaderPresent": false,
+          "evidence": "Production raw HTML sampled on 2026-08-05 did not contain GA4, GTM, or UA identifiers."
+        },
+        "repositoryEvidence": "Repository text scan found no first-party analytics tag configuration outside dependency lockfile noise.",
+        "propertyOwnerState": "not-publicly-verified",
+        "consentState": "not-publicly-verified",
+        "retentionState": "not-publicly-verified",
+        "ownerBoundary": "first-party-degov-domain"
+      },
+      {
+        "surface": "docs",
+        "representativeUrl": "https://docs.degov.ai/",
+        "repository": "ringecosystem/degov-docs",
+        "tagReadback": {
+          "state": "empty-google-property-loader",
+          "tagIds": [],
+          "gtagLoaderPresent": true,
+          "gtmLoaderPresent": false,
+          "evidence": "Production raw HTML sampled on 2026-08-05 included `googletagmanager.com/gtag/js?id=` but no GA4 measurement ID."
+        },
+        "repositoryEvidence": "`mkdocs.yml` declares `analytics.provider: google` with an empty `property` value.",
+        "propertyOwnerState": "not-publicly-verified",
+        "consentState": "not-publicly-verified",
+        "retentionState": "not-publicly-verified",
+        "ownerBoundary": "first-party-degov-domain"
+      },
+      {
+        "surface": "square",
+        "representativeUrl": "https://square.degov.ai/",
+        "repository": "ringecosystem/degov-square",
+        "tagReadback": {
+          "state": "ga4-tag-present",
+          "tagIds": ["G-26505WB9XS"],
+          "gtagLoaderPresent": true,
+          "gtmLoaderPresent": false,
+          "evidence": "Production raw HTML sampled on 2026-08-05 included GA4 measurement ID `G-26505WB9XS`."
+        },
+        "repositoryEvidence": "`web/src/config/base.ts` exports `GOOGLE_ANALYTICS_TAG = 'G-26505WB9XS'`; `web/src/app/analytics.tsx` excludes private/write route prefixes from analytics rendering.",
+        "propertyOwnerState": "not-publicly-verified",
+        "consentState": "not-publicly-verified",
+        "retentionState": "not-publicly-verified",
+        "ownerBoundary": "first-party-degov-domain"
+      },
+      {
+        "surface": "dao-sites",
+        "representativeUrl": "https://lisk.degov.ai/",
+        "repository": "ringecosystem/degov",
+        "tagReadback": {
+          "state": "representative-ga4-tag-present",
+          "tagIds": ["G-0X2S8293S1"],
+          "gtagLoaderPresent": true,
+          "gtmLoaderPresent": false,
+          "evidence": "Production raw HTML sampled on 2026-08-05 included Lisk GA4 measurement ID `G-0X2S8293S1`; `https://demo.degov.ai/` did not include a public GA tag."
+        },
+        "repositoryEvidence": "`apps/web/src/app/layout.tsx` injects GA from validated DAO config `analysis.ga.tag`; degov-registry has 42 DAO YAML files with GA4 tags, including Lisk `G-0X2S8293S1`, ENS `G-30MY2D0MMM`, and Ring `G-BCRTFBKS4G`.",
+        "propertyOwnerState": "dao-owner-boundary-not-publicly-verified",
+        "consentState": "not-publicly-verified",
+        "retentionState": "not-publicly-verified",
+        "ownerBoundary": "custom DAO domains may have separate ownership and consent authority"
+      },
+      {
+        "surface": "atlas",
+        "representativeUrl": "https://atlas.degov.ai/",
+        "repository": "ringecosystem/degov-agent-api",
+        "tagReadback": {
+          "state": "no-public-tag-found",
+          "tagIds": [],
+          "gtagLoaderPresent": false,
+          "gtmLoaderPresent": false,
+          "evidence": "Production raw HTML sampled on 2026-08-05 did not contain GA4, GTM, or UA identifiers."
+        },
+        "repositoryEvidence": "Atlas app repository scan found no first-party GA/GTM tag configuration.",
+        "propertyOwnerState": "not-publicly-verified",
+        "consentState": "not-publicly-verified",
+        "retentionState": "not-publicly-verified",
+        "ownerBoundary": "first-party-degov-domain"
+      }
+    ],
+    "completionEffect": "This inventory maps public tag/no-tag evidence and owner-boundary state for the first measurement cohort. It does not approve instrumentation changes, prove GA property ownership, prove consent behavior, or save a conversion baseline."
+  },
   "channelDefinitions": [
     {
       "id": "organic-search",
