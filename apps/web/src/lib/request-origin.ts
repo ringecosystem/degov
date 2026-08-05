@@ -20,6 +20,14 @@ function isVercelHost(hostname: string): boolean {
   return hostname === "vercel.app" || hostname.endsWith(".vercel.app");
 }
 
+function getKnownProductionOrigin(hostname: string): string | null {
+  if (hostname === "degov-dev.vercel.app") {
+    return "https://demo.degov.ai";
+  }
+
+  return null;
+}
+
 export function getPublicOriginFromHost(
   host: string | null | undefined
 ): string | null {
@@ -89,7 +97,15 @@ export function getPublicOriginFromEnvironment(env: {
 
   if (env.VERCEL_ENV !== "production") return null;
 
-  return getPublicOriginFromUrlOrHost(env.VERCEL_PROJECT_PRODUCTION_URL);
+  const productionOrigin = getPublicOriginFromUrlOrHost(
+    env.VERCEL_PROJECT_PRODUCTION_URL
+  );
+  if (!productionOrigin) return null;
+
+  const productionHost = getHostname(productionOrigin);
+  if (!productionHost) return productionOrigin;
+
+  return getKnownProductionOrigin(productionHost) ?? productionOrigin;
 }
 
 export function shouldUseEnvironmentSiteUrl(params: {
