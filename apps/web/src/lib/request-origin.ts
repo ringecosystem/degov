@@ -20,12 +20,16 @@ function isVercelHost(hostname: string): boolean {
   return hostname === "vercel.app" || hostname.endsWith(".vercel.app");
 }
 
-function getKnownProductionOrigin(hostname: string): string | null {
-  if (hostname === "degov-dev.vercel.app") {
-    return "https://demo.degov.ai";
-  }
+const KNOWN_PRODUCTION_ORIGINS = new Map([
+  ["degov-dev.vercel.app", "https://demo.degov.ai"],
+]);
 
-  return null;
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getKnownProductionOrigin(hostname: string): string | null {
+  return KNOWN_PRODUCTION_ORIGINS.get(hostname) ?? null;
 }
 
 export function getKnownProductionOriginFromConfig(
@@ -48,6 +52,50 @@ export function withKnownProductionSiteUrl(
   if (!knownProductionOrigin) return config;
 
   return withRequestSiteUrl(config, productionOrigin ?? knownProductionOrigin);
+}
+
+export function replaceKnownProductionOrigins(
+  value: string,
+  productionOrigin?: string | null
+): string {
+  let result = value;
+
+  for (const [hostname, knownProductionOrigin] of KNOWN_PRODUCTION_ORIGINS) {
+    const staleOrigin = new RegExp(
+      `https://${escapeRegex(hostname)}(?=[/?#]|$)`,
+      "g"
+    );
+    result = result.replace(staleOrigin, productionOrigin ?? knownProductionOrigin);
+  }
+
+  return result;
+}
+
+export function withKnownProductionConfigOrigins(
+  config: Config,
+  productionOrigin?: string | null
+): Config {
+  const siteUrlConfig = withKnownProductionSiteUrl(config, productionOrigin);
+  if (!siteUrlConfig.apps?.length) return siteUrlConfig;
+
+  let changed = siteUrlConfig !== config;
+  const apps = siteUrlConfig.apps.map((app) => {
+    const link = replaceKnownProductionOrigins(app.link, productionOrigin);
+    if (link === app.link) return app;
+
+    changed = true;
+    return {
+      ...app,
+      link,
+    };
+  });
+
+  return changed
+    ? {
+        ...siteUrlConfig,
+        apps,
+      }
+    : siteUrlConfig;
 }
 
 export function getPublicOriginFromHost(

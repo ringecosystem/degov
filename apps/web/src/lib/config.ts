@@ -6,7 +6,7 @@ import { unstable_cache } from "next/cache";
 import { loadConfigYaml } from "@/lib/config-yaml";
 import {
   getPublicOriginFromEnvironment,
-  withKnownProductionSiteUrl,
+  withKnownProductionConfigOrigins,
 } from "@/lib/request-origin";
 import type { Config } from "@/types/config";
 
@@ -21,7 +21,7 @@ function normalizeConfig(config: Config): Config {
     VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
   });
 
-  return withKnownProductionSiteUrl(config, productionOrigin);
+  return withKnownProductionConfigOrigins(config, productionOrigin);
 }
 
 export const getDaoConfigServer = unstable_cache(

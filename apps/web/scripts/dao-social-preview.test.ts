@@ -20,6 +20,7 @@ import {
   getPublicOriginFromHost,
   shouldUseEnvironmentSiteUrl,
   shouldUseRequestSiteUrl,
+  withKnownProductionConfigOrigins,
   withKnownProductionSiteUrl,
   withRequestSiteUrl,
 } from "../src/lib/request-origin.ts";
@@ -241,6 +242,41 @@ test("shared config normalization maps stale site URL before metadata builders",
         "Use the production demo alias before public metadata is generated.",
     }),
     "https://demo.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
+  );
+});
+
+test("shared config normalization maps stale production origins in public app links", () => {
+  const staleVercelConfig = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+    apps: [
+      {
+        name: "Token Wrap",
+        description: "Wrap tokens",
+        icon: "https://demo.degov.ai/token-wrap.png",
+        link: "https://token-wrap.degov.ai?config=https://degov-dev.vercel.app/degov.yml",
+      },
+      {
+        name: "Untrusted Prefix Host",
+        description: "Must not normalize a prefixed hostname",
+        icon: "https://demo.degov.ai/untrusted.png",
+        link: "https://degov-dev.vercel.app.evil.com/degov.yml",
+      },
+    ],
+  };
+  const config = withKnownProductionConfigOrigins(
+    staleVercelConfig,
+    "https://demo.degov.ai"
+  );
+
+  assert.equal(config.siteUrl, "https://demo.degov.ai");
+  assert.equal(
+    config.apps?.[0]?.link,
+    "https://token-wrap.degov.ai?config=https://demo.degov.ai/degov.yml"
+  );
+  assert.equal(
+    config.apps?.[1]?.link,
+    "https://degov-dev.vercel.app.evil.com/degov.yml"
   );
 });
 
