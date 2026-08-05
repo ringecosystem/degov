@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { getDaoConfigServer } from "@/lib/config";
 import { loadConfigYaml } from "@/lib/config-yaml";
 import {
+  getKnownProductionOriginFromConfig,
   getPublicOriginFromEnvironment,
   getPublicOriginFromHeaders,
   shouldUseEnvironmentSiteUrl,
@@ -91,6 +92,11 @@ export async function getConfigCachedByHost(): Promise<Config> {
   );
 
   const result = await get();
+  const knownProductionOrigin = getKnownProductionOriginFromConfig(result);
+  if (knownProductionOrigin) {
+    return withRequestSiteUrl(result, knownProductionOrigin);
+  }
+
   return shouldUseRequestSiteUrl({
     config: result,
     requestOrigin: publicRequestOrigin,

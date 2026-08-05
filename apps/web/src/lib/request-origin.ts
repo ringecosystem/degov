@@ -28,6 +28,18 @@ function getKnownProductionOrigin(hostname: string): string | null {
   return null;
 }
 
+export function getKnownProductionOriginFromConfig(
+  config: Config
+): string | null {
+  const configuredSiteUrl = config.siteUrl?.trim();
+  if (!configuredSiteUrl) return null;
+
+  const configuredHost = getHostname(configuredSiteUrl);
+  if (!configuredHost) return null;
+
+  return getKnownProductionOrigin(configuredHost);
+}
+
 export function getPublicOriginFromHost(
   host: string | null | undefined
 ): string | null {
