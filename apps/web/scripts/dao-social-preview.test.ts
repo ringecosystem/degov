@@ -5,6 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  buildHomeMetadata,
+  buildNoPublicPreviewMetadata,
   buildProposalDirectoryMetadata,
   buildProposalMetadata,
   buildSiteMetadata,
@@ -131,7 +133,11 @@ test("DAO social preview fallback is a public 1200x630 PNG asset", () => {
 });
 
 test("DAO public metadata uses host-correct large-image social previews", () => {
-  assertSocialMetadata(buildSiteMetadata(demoConfig), "https://demo.degov.ai");
+  const siteMetadata = buildSiteMetadata(demoConfig);
+  const homeMetadata = buildHomeMetadata(demoConfig);
+
+  assert.equal(homeMetadata.alternates?.canonical, "https://demo.degov.ai");
+  assertSocialMetadata(siteMetadata, "https://demo.degov.ai");
   assertSocialMetadata(
     buildProposalDirectoryMetadata(demoConfig),
     "https://demo.degov.ai/proposals"
@@ -469,10 +475,32 @@ test("private DAO routes keep explicit noindex metadata", () => {
 
   for (const layout of privateLayouts) {
     const source = readFileSync(path.join(rootDir, layout), "utf8");
-    assert.match(source, /robots:\s*{/);
-    assert.match(source, /index:\s*false/);
-    assert.match(source, /follow:\s*false/);
-    assert.doesNotMatch(source, /openGraph:/);
-    assert.doesNotMatch(source, /twitter:/);
+    assert.match(source, /buildNoPublicPreviewMetadata/);
+    assert.doesNotMatch(source, /buildSiteMetadata/);
   }
+});
+
+test("no-public-preview metadata suppresses inherited canonical and social cards", () => {
+  const metadata = buildNoPublicPreviewMetadata("Private route");
+
+  assert.deepEqual(metadata.robots, {
+    index: false,
+    follow: false,
+  });
+  assert.equal(metadata.alternates, null);
+  assert.equal(metadata.openGraph, null);
+  assert.equal(metadata.twitter, null);
+});
+
+test("invalid proposal metadata path suppresses public share cards", () => {
+  const source = readFileSync(
+    path.join(rootDir, "apps/web/src/app/proposal/[id]/layout.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /buildNoPublicPreviewMetadata\("Proposal not found"\)/);
+  assert.match(
+    source,
+    /if\s*\(!proposal\)\s*{\s*return buildNoPublicPreviewMetadata\("Proposal not found"\);\s*}/
+  );
 });

@@ -131,6 +131,19 @@ export function buildSiteMetadata(
   };
 }
 
+export function buildNoPublicPreviewMetadata(title: string): Metadata {
+  return {
+    title,
+    robots: {
+      index: false,
+      follow: false,
+    },
+    alternates: null,
+    openGraph: null,
+    twitter: null,
+  };
+}
+
 export function buildHomeMetadata(
   config: Config | null | undefined
 ): Metadata {
