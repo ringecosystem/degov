@@ -8,7 +8,7 @@ import {
   getPublicOriginFromHeaders,
   shouldUseEnvironmentSiteUrl,
   shouldUseRequestSiteUrl,
-  withKnownProductionSiteUrl,
+  withKnownProductionConfigOrigins,
   withRequestSiteUrl,
 } from "@/lib/request-origin";
 import type { Config } from "@/types/config";
@@ -92,7 +92,7 @@ export async function getConfigCachedByHost(): Promise<Config> {
   );
 
   const result = await get();
-  const normalizedResult = withKnownProductionSiteUrl(result);
+  const normalizedResult = withKnownProductionConfigOrigins(result);
 
   return shouldUseRequestSiteUrl({
     config: normalizedResult,
