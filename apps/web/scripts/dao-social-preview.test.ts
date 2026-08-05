@@ -316,7 +316,10 @@ test("production deploy provides the canonical public demo origin", () => {
     "utf8"
   );
 
-  assert.match(workflow, /"DEGOV_PUBLIC_SITE_URL": "https:\/\/demo\.degov\.ai"/);
+  assert.match(
+    workflow,
+    /"DEGOV_PUBLIC_SITE_URL"\s*:\s*"https:\/\/demo\.degov\.ai"/
+  );
 });
 
 test("private DAO routes keep explicit noindex metadata", () => {
