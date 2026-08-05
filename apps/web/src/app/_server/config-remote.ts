@@ -4,11 +4,11 @@ import { headers } from "next/headers";
 import { getDaoConfigServer } from "@/lib/config";
 import { loadConfigYaml } from "@/lib/config-yaml";
 import {
-  getKnownProductionOriginFromConfig,
   getPublicOriginFromEnvironment,
   getPublicOriginFromHeaders,
   shouldUseEnvironmentSiteUrl,
   shouldUseRequestSiteUrl,
+  withKnownProductionSiteUrl,
   withRequestSiteUrl,
 } from "@/lib/request-origin";
 import type { Config } from "@/types/config";
@@ -92,10 +92,7 @@ export async function getConfigCachedByHost(): Promise<Config> {
   );
 
   const result = await get();
-  const knownProductionOrigin = getKnownProductionOriginFromConfig(result);
-  const normalizedResult = knownProductionOrigin
-    ? withRequestSiteUrl(result, knownProductionOrigin)
-    : result;
+  const normalizedResult = withKnownProductionSiteUrl(result);
 
   return shouldUseRequestSiteUrl({
     config: normalizedResult,

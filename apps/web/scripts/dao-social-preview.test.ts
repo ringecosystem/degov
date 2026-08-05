@@ -20,6 +20,7 @@ import {
   getPublicOriginFromHost,
   shouldUseEnvironmentSiteUrl,
   shouldUseRequestSiteUrl,
+  withKnownProductionSiteUrl,
   withRequestSiteUrl,
 } from "../src/lib/request-origin.ts";
 
@@ -213,6 +214,30 @@ test("known stale config site URL maps to the production demo alias", () => {
   assert.equal(getKnownProductionOriginFromConfig(demoConfig), null);
 });
 
+test("shared config normalization maps stale site URL before metadata builders", () => {
+  const staleVercelConfig = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+  const config = withKnownProductionSiteUrl(
+    staleVercelConfig,
+    "https://demo.degov.ai"
+  );
+
+  assertSocialMetadata(buildSiteMetadata(config), "https://demo.degov.ai");
+  assertSocialMetadata(
+    buildProposalMetadata({
+      config,
+      proposalId:
+        "0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878",
+      title: "Normalize local config site URL",
+      description:
+        "Use the production demo alias before public metadata is generated.",
+    }),
+    "https://demo.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
+  );
+});
+
 test("request site URL override happens after remote config cache lookup", () => {
   const source = readFileSync(
     path.join(rootDir, "apps/web/src/app/_server/config-remote.ts"),
@@ -225,6 +250,21 @@ test("request site URL override happens after remote config cache lookup", () =>
   assert.ok(
     overrideIndex > cacheReturnIndex,
     "request host override must run after cache lookup so cache hits are normalized"
+  );
+});
+
+test("local config path normalizes known stale site URL after YAML load", () => {
+  const source = readFileSync(
+    path.join(rootDir, "apps/web/src/lib/config.ts"),
+    "utf8"
+  );
+  const yamlLoadIndex = source.indexOf("const config = loadConfigYaml(yamlText);");
+  const normalizeIndex = source.indexOf("return normalizeConfig(config);");
+
+  assert.ok(yamlLoadIndex >= 0, "local config must load YAML explicitly");
+  assert.ok(
+    normalizeIndex > yamlLoadIndex,
+    "local config must normalize stale production siteUrl before returning config"
   );
 });
 
