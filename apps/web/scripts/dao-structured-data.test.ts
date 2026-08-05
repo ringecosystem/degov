@@ -6,7 +6,7 @@ import {
   buildProposalWebPageJsonLd,
 } from "../src/lib/structured-data.ts";
 
-import type { ProposalItem } from "../src/services/graphql/types.ts";
+import type { ProposalItem } from "../src/services/graphql/types/index.ts";
 import type { Config } from "../src/types/config.ts";
 
 const config: Config = {
@@ -154,7 +154,7 @@ test("proposal WebPage JSON-LD is escaped, bounded, and not misclassified", () =
   const jsonLd = buildProposalWebPageJsonLd(config, {
     ...proposal,
     title: "Proposal <script>alert(1)</script>",
-    description: `<b>${"Very long proposal description ".repeat(20)}</b>`,
+    description: `<b>${"Very long proposal description ".repeat(20)}</b><discussion>private forum thread</discussion><signature>["transfer(address,uint256)"]</signature>`,
   });
   assert.ok(jsonLd);
   assert.ok(!jsonLd.includes("<"));
@@ -168,6 +168,8 @@ test("proposal WebPage JSON-LD is escaped, bounded, and not misclassified", () =
   assert.equal(data.name, "Proposal alert(1)");
   assert.ok(data.description.length <= 220);
   assert.ok(!data.description.includes("<b>"));
+  assert.ok(!data.description.includes("private forum thread"));
+  assert.ok(!data.description.includes("transfer(address,uint256)"));
 });
 
 test("proposal WebPage JSON-LD is omitted without a valid public page", () => {

@@ -1,6 +1,8 @@
 import type { ProposalItem } from "@/services/graphql/types";
 import type { Config } from "@/types/config";
 
+import { extractTitleAndDescription, parseDescription } from "../utils/helpers.ts";
+
 import { cleanMetadataText, truncateMetadataText } from "./metadata-text.ts";
 
 const DESCRIPTION_MAX_LENGTH = 220;
@@ -55,12 +57,19 @@ export function buildProposalWebPageJsonLd(
   if (!siteUrl || !config?.name || !proposal?.proposalId) return null;
 
   const proposalUrl = new URL(`/proposal/${proposal.proposalId}`, siteUrl).toString();
+  const parsedDescription = parseDescription(proposal.description);
+  const titleAndDescription = extractTitleAndDescription(
+    parsedDescription.mainText
+  );
   const name = truncateMetadataText(
-    cleanMetadataText(proposal.title) || `Proposal ${proposal.proposalId}`,
+    cleanMetadataText(proposal.title || titleAndDescription.title) ||
+      `Proposal ${proposal.proposalId}`,
     TITLE_MAX_LENGTH
   );
   const description = truncateMetadataText(
-    cleanMetadataText(proposal.description),
+    cleanMetadataText(
+      titleAndDescription.description || parsedDescription.mainText
+    ),
     DESCRIPTION_MAX_LENGTH
   );
 
