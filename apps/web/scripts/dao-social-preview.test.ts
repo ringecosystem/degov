@@ -14,6 +14,7 @@ import {
   SOCIAL_PREVIEW_IMAGE_WIDTH,
 } from "../src/lib/metadata.ts";
 import {
+  getKnownProductionOriginFromConfig,
   getPublicOriginFromEnvironment,
   getPublicOriginFromHeaders,
   getPublicOriginFromHost,
@@ -194,6 +195,22 @@ test("single DAO mode only overrides known stale Vercel config origins", () => {
     }),
     false
   );
+});
+
+test("known stale config site URL maps to the production demo alias", () => {
+  const staleVercelConfig = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+
+  const productionOrigin = getKnownProductionOriginFromConfig(staleVercelConfig);
+
+  assert.equal(productionOrigin, "https://demo.degov.ai");
+  assertSocialMetadata(
+    buildSiteMetadata(withRequestSiteUrl(staleVercelConfig, productionOrigin)),
+    "https://demo.degov.ai"
+  );
+  assert.equal(getKnownProductionOriginFromConfig(demoConfig), null);
 });
 
 test("request site URL override happens after remote config cache lookup", () => {
