@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { getDaoConfigServer } from "@/lib/config";
 import { loadConfigYaml } from "@/lib/config-yaml";
 import {
-  getPublicOriginFromHost,
+  getPublicOriginFromHeaders,
   shouldUseRequestSiteUrl,
   withRequestSiteUrl,
 } from "@/lib/request-origin";
@@ -14,12 +14,12 @@ import { degovApiDaoConfigServer } from "@/utils/remote-api";
 export async function getConfigCachedByHost(): Promise<Config> {
   const hdr = await headers();
   const host = hdr.get("host");
-  const publicRequestOrigin = getPublicOriginFromHost(host);
+  const publicRequestOrigin = getPublicOriginFromHeaders(hdr);
 
   // Resolve the canonical public origin to pass to the remote config API.
   // Next.js internal revalidation requests use the pod IP as the Host header,
-  // which the backend cannot match to any DAO. Prefer Origin > Referer > Host,
-  // and skip bare pod IPs so the backend can use its database lookup correctly.
+  // which the backend cannot match to any DAO. Prefer Origin > Referer >
+  // forwarded public host so the backend can use its database lookup correctly.
   const originHeader = hdr.get("origin");
   const refererHeader = hdr.get("referer");
 
@@ -33,14 +33,13 @@ export async function getConfigCachedByHost(): Promise<Config> {
       // malformed referer
     }
   }
-  if (!resolvedOrigin && host) {
-    const isPodIp = /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(host);
-    if (!isPodIp) {
-      resolvedOrigin = `https://${host}`;
-    }
+  if (!resolvedOrigin) {
+    resolvedOrigin = publicRequestOrigin;
   }
 
-  const hostKey = (host ?? "default").toLowerCase();
+  const hostKey = (
+    publicRequestOrigin ? new URL(publicRequestOrigin).host : host ?? "default"
+  ).toLowerCase();
 
   const get = unstable_cache(
     async () => {

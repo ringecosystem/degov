@@ -48,6 +48,15 @@ export function getPublicOriginFromHost(
   }
 }
 
+export function getPublicOriginFromHeaders(headers: {
+  get(name: string): string | null;
+}): string | null {
+  return (
+    getPublicOriginFromHost(headers.get("x-forwarded-host")) ??
+    getPublicOriginFromHost(headers.get("host"))
+  );
+}
+
 export function shouldUseRequestSiteUrl(params: {
   config: Config;
   requestOrigin: string | null;
