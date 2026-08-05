@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildNoPublicPreviewMetadata,
   buildProposalMetadata,
   buildSiteMetadata,
   cleanMetadataText,
@@ -87,6 +88,7 @@ test("proposal metadata keeps a proposal-specific title and canonical url", () =
 test("site metadata uses a host-correct large social preview image", () => {
   const metadata = buildSiteMetadata(liskConfig);
 
+  assert.equal(metadata.alternates?.canonical, "https://lisk.degov.ai");
   assert.equal(metadata.openGraph?.url, "https://lisk.degov.ai");
   assert.equal(metadata.twitter?.card, "summary_large_image");
   assert.deepEqual(metadata.openGraph?.images, [
@@ -112,4 +114,17 @@ test("proposal metadata text cleaning removes markdown, html, and collapses whit
   );
 
   assert.equal(cleaned, "Hello world See forum ignored");
+});
+
+test("no-public-preview metadata removes canonical and social cards", () => {
+  const metadata = buildNoPublicPreviewMetadata("Proposal not found");
+
+  assert.equal(metadata.title, "Proposal not found");
+  assert.deepEqual(metadata.robots, {
+    index: false,
+    follow: false,
+  });
+  assert.equal(metadata.alternates, null);
+  assert.equal(metadata.openGraph, null);
+  assert.equal(metadata.twitter, null);
 });

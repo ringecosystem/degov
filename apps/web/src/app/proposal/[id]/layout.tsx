@@ -1,6 +1,9 @@
 import { getConfigCachedByHost } from "@/app/_server/config-remote";
 import { getDaoConfigServer } from "@/lib/config";
-import { buildProposalMetadata } from "@/lib/metadata";
+import {
+  buildNoPublicPreviewMetadata,
+  buildProposalMetadata,
+} from "@/lib/metadata";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { extractTitleAndDescription, parseDescription } from "@/utils/helpers";
 import { isDegovApiConfiguredServer } from "@/utils/remote-api";
@@ -31,13 +34,7 @@ export async function generateMetadata({
   try {
     BigInt(id);
   } catch {
-    return {
-      title: "Proposal not found",
-      robots: {
-        index: false,
-        follow: false,
-      },
-    };
+    return buildNoPublicPreviewMetadata("Proposal not found");
   }
 
   if (!config?.indexer?.endpoint) {
@@ -60,10 +57,7 @@ export async function generateMetadata({
     const proposal = proposals[0];
 
     if (!proposal) {
-      return buildProposalMetadata({
-        config,
-        proposalId: id,
-      });
+      return buildNoPublicPreviewMetadata("Proposal not found");
     }
 
     const parsedDescription = parseDescription(proposal.description);

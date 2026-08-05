@@ -89,6 +89,11 @@ export function buildSiteMetadata(
       default: `${daoName}`,
     },
     description,
+    alternates: publicSiteUrl
+      ? {
+          canonical: publicSiteUrl,
+        }
+      : undefined,
     icons: config?.logo
       ? {
           icon: [{ url: config.logo }],
@@ -128,6 +133,19 @@ export function buildSiteMetadata(
     other: {
       configName: daoName,
     },
+  };
+}
+
+export function buildNoPublicPreviewMetadata(title: string): Metadata {
+  return {
+    title,
+    robots: {
+      index: false,
+      follow: false,
+    },
+    alternates: null,
+    openGraph: null,
+    twitter: null,
   };
 }
 
