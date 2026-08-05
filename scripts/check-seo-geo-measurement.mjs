@@ -173,6 +173,7 @@ assert.match(contract.sourcePolicy.sourceUseRule, /Missing referrer data remains
 
 assertUnique(contract.surfaceInventory, "id", "surface inventory");
 const surfaceIds = new Set(contract.surfaceInventory.map((surface) => surface.id));
+const surfaceInventoryById = new Map(contract.surfaceInventory.map((surface) => [surface.id, surface]));
 for (const surface of requiredSurfaces) {
   assert.ok(surfaceIds.has(surface), `missing surface ${surface}`);
 }
@@ -199,6 +200,11 @@ for (const surface of requiredSurfaces) {
 for (const surface of contract.liveAnalyticsInventory.surfaces) {
   assert.ok(requiredSurfaces.has(surface.surface), `${surface.surface} known surface`);
   assert.ok(requiredRepositories.has(surface.repository), `${surface.surface} repository`);
+  assert.equal(
+    surface.repository,
+    surfaceInventoryById.get(surface.surface)?.repository,
+    `${surface.surface} repository must match surface inventory`
+  );
   assert.match(
     surface.representativeUrl,
     /^https:\/\/([a-z0-9-]+\.)?degov\.ai\//,

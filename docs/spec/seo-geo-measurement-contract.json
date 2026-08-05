@@ -2,7 +2,7 @@
   "version": 1,
   "ownerIssue": "https://github.com/ringecosystem/degov/issues/1031",
   "parentIssue": "https://github.com/ringecosystem/degov/issues/714",
-  "updatedAt": "2026-08-04",
+  "updatedAt": "2026-08-05",
   "maintenance": {
     "ownerRepository": "ringecosystem/degov",
     "contractPath": "docs/spec/seo-geo-measurement-contract.json",
