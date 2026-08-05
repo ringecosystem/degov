@@ -57,6 +57,46 @@ export function getPublicOriginFromHeaders(headers: {
   );
 }
 
+function getPublicOriginFromUrlOrHost(value: string | undefined): string | null {
+  if (!value) return null;
+
+  try {
+    return getPublicOriginFromHost(new URL(value).host);
+  } catch {
+    return getPublicOriginFromHost(value);
+  }
+}
+
+export function getPublicOriginFromEnvironment(env: {
+  DEGOV_PUBLIC_SITE_URL?: string;
+  VERCEL_ENV?: string;
+  VERCEL_PROJECT_PRODUCTION_URL?: string;
+}): string | null {
+  const explicitOrigin = getPublicOriginFromUrlOrHost(env.DEGOV_PUBLIC_SITE_URL);
+  if (explicitOrigin) return explicitOrigin;
+
+  if (env.VERCEL_ENV !== "production") return null;
+
+  return getPublicOriginFromUrlOrHost(env.VERCEL_PROJECT_PRODUCTION_URL);
+}
+
+export function shouldUseEnvironmentSiteUrl(params: {
+  requestOrigin: string | null;
+  environmentOrigin: string | null;
+}): boolean {
+  const { requestOrigin, environmentOrigin } = params;
+  if (!environmentOrigin) return false;
+  if (!requestOrigin) return true;
+
+  const requestHost = getHostname(requestOrigin);
+  const environmentHost = getHostname(environmentOrigin);
+  if (!requestHost || !environmentHost || requestHost === environmentHost) {
+    return false;
+  }
+
+  return isVercelHost(requestHost) && isDegovOwnedHost(environmentHost);
+}
+
 export function shouldUseRequestSiteUrl(params: {
   config: Config;
   requestOrigin: string | null;
