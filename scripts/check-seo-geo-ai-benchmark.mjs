@@ -44,6 +44,32 @@ const requiredRunFields = new Set([
   "evaluator_notes",
   "limitations",
 ]);
+const requiredRawEvidenceFields = new Set([
+  "run_record_id",
+  "query_id",
+  "provider",
+  "executed_at",
+  "repetition_number",
+  "raw_answer_evidence_location",
+  "citation_evidence_locations",
+  "evaluator",
+  "evaluator_notes",
+  "storage_location",
+  "storage_approval_reference",
+  "redaction_notes",
+]);
+const requiredAggregateResultFields = new Set([
+  "result_id",
+  "covered_query_ids",
+  "covered_providers",
+  "run_record_ids",
+  "repetition_count_by_query_provider",
+  "dimension_scores",
+  "known_limitations",
+  "bing_ai_performance_report",
+  "raw_result_location",
+  "issue_714_comment",
+]);
 const requiredProviderIds = new Set([
   "chatgpt-search",
   "perplexity",
@@ -139,6 +165,7 @@ for (const field of [
   "sourcePolicy",
   "runRecordSchema",
   "scoringConstraints",
+  "evidenceTraceability",
   "experimentTemplate",
   "privacyAndStorage",
   "baselineState",
@@ -180,6 +207,43 @@ assert.ok(
 );
 assert.match(contract.runRecordSchema.repetitionProcedure.providerTermsRule, /provider terms/);
 assert.match(contract.runRecordSchema.rawEvidenceRule, /Preserve answer text/);
+
+assert.equal(contract.evidenceTraceability.storageApprovalStatus, "pending-approval");
+assert.match(contract.evidenceTraceability.storageApprovalRule, /Do not store provider answer text/);
+assert.match(contract.evidenceTraceability.storageApprovalRule, /provider-terms basis/);
+assertPlainObject(contract.evidenceTraceability.rawRunEvidenceSchema, "raw run evidence schema");
+assertPlainObject(contract.evidenceTraceability.aggregateResultSchema, "aggregate result schema");
+assert.match(
+  contract.evidenceTraceability.rawRunEvidenceSchema.idPattern,
+  /provider-query-repetition/
+);
+for (const field of requiredRawEvidenceFields) {
+  assert.ok(
+    contract.evidenceTraceability.rawRunEvidenceSchema.requiredFields.includes(field),
+    `missing raw evidence field ${field}`
+  );
+}
+assert.match(
+  contract.evidenceTraceability.rawRunEvidenceSchema.traceabilityRule,
+  /storage location/
+);
+assert.match(
+  contract.evidenceTraceability.rawRunEvidenceSchema.traceabilityRule,
+  /approval reference/
+);
+for (const field of requiredAggregateResultFields) {
+  assert.ok(
+    contract.evidenceTraceability.aggregateResultSchema.requiredFields.includes(field),
+    `missing aggregate result field ${field}`
+  );
+}
+assert.match(
+  contract.evidenceTraceability.aggregateResultSchema.traceabilityRule,
+  /raw run record IDs/
+);
+assert.match(contract.evidenceTraceability.aggregateResultSchema.traceabilityRule, /#714/);
+assert.match(contract.evidenceTraceability.completionEffect, /does not approve storage/);
+assert.match(contract.evidenceTraceability.completionEffect, /complete a baseline run/);
 
 assertUnique(contract.providerCoverage, "id", "provider coverage");
 const providerIds = new Set(contract.providerCoverage.map((provider) => provider.id));

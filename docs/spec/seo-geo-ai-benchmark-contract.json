@@ -210,6 +210,44 @@
     },
     "rawEvidenceRule": "Preserve answer text or durable evidence references for every run before aggregating scores."
   },
+  "evidenceTraceability": {
+    "storageApprovalStatus": "pending-approval",
+    "storageApprovalRule": "Do not store provider answer text, screenshots, or exported reports in GitHub or another workspace until the storage location, access, retention, and provider-terms basis are approved.",
+    "rawRunEvidenceSchema": {
+      "idPattern": "ai-benchmark-run-YYYY-MM-DD-provider-query-repetition",
+      "requiredFields": [
+        "run_record_id",
+        "query_id",
+        "provider",
+        "executed_at",
+        "repetition_number",
+        "raw_answer_evidence_location",
+        "citation_evidence_locations",
+        "evaluator",
+        "evaluator_notes",
+        "storage_location",
+        "storage_approval_reference",
+        "redaction_notes"
+      ],
+      "traceabilityRule": "Every run record must identify the exact query, provider, repetition, raw answer evidence location, citation evidence locations, evaluator notes, storage location, and approval reference."
+    },
+    "aggregateResultSchema": {
+      "requiredFields": [
+        "result_id",
+        "covered_query_ids",
+        "covered_providers",
+        "run_record_ids",
+        "repetition_count_by_query_provider",
+        "dimension_scores",
+        "known_limitations",
+        "bing_ai_performance_report",
+        "raw_result_location",
+        "issue_714_comment"
+      ],
+      "traceabilityRule": "Every aggregate result must link to raw run record IDs and the #714 evidence comment before any baseline, trend, or experiment claim is made."
+    },
+    "completionEffect": "This schema defines how raw evidence and aggregate results must be traced. It does not approve storage, complete a baseline run, or permit closing #1030 without real preserved evidence."
+  },
   "providerCoverage": [
     {
       "id": "chatgpt-search",
