@@ -256,6 +256,12 @@ test("shared config normalization maps stale production origins in public app li
         icon: "https://demo.degov.ai/token-wrap.png",
         link: "https://token-wrap.degov.ai?config=https://degov-dev.vercel.app/degov.yml",
       },
+      {
+        name: "Untrusted Prefix Host",
+        description: "Must not normalize a prefixed hostname",
+        icon: "https://demo.degov.ai/untrusted.png",
+        link: "https://degov-dev.vercel.app.evil.com/degov.yml",
+      },
     ],
   };
   const config = withKnownProductionConfigOrigins(
@@ -267,6 +273,10 @@ test("shared config normalization maps stale production origins in public app li
   assert.equal(
     config.apps?.[0]?.link,
     "https://token-wrap.degov.ai?config=https://demo.degov.ai/degov.yml"
+  );
+  assert.equal(
+    config.apps?.[1]?.link,
+    "https://degov-dev.vercel.app.evil.com/degov.yml"
   );
 });
 

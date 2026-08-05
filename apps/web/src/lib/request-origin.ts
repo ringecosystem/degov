@@ -24,6 +24,10 @@ const KNOWN_PRODUCTION_ORIGINS = new Map([
   ["degov-dev.vercel.app", "https://demo.degov.ai"],
 ]);
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function getKnownProductionOrigin(hostname: string): string | null {
   return KNOWN_PRODUCTION_ORIGINS.get(hostname) ?? null;
 }
@@ -57,10 +61,11 @@ export function replaceKnownProductionOrigins(
   let result = value;
 
   for (const [hostname, knownProductionOrigin] of KNOWN_PRODUCTION_ORIGINS) {
-    result = result.replaceAll(
-      `https://${hostname}`,
-      productionOrigin ?? knownProductionOrigin
+    const staleOrigin = new RegExp(
+      `https://${escapeRegex(hostname)}(?=[/?#]|$)`,
+      "g"
     );
+    result = result.replace(staleOrigin, productionOrigin ?? knownProductionOrigin);
   }
 
   return result;
