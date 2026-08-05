@@ -125,6 +125,7 @@ const requiredTopLevelArrays = new Set([
 const requiredTopLevelObjects = new Set([
   "maintenance",
   "sourcePolicy",
+  "liveAnalyticsInventory",
   "crossDomainAttribution",
   "baselinePlan",
   "reportContract",
@@ -172,15 +173,67 @@ assert.match(contract.sourcePolicy.sourceUseRule, /Missing referrer data remains
 
 assertUnique(contract.surfaceInventory, "id", "surface inventory");
 const surfaceIds = new Set(contract.surfaceInventory.map((surface) => surface.id));
+const surfaceInventoryById = new Map(contract.surfaceInventory.map((surface) => [surface.id, surface]));
 for (const surface of requiredSurfaces) {
   assert.ok(surfaceIds.has(surface), `missing surface ${surface}`);
 }
 for (const surface of contract.surfaceInventory) {
   assert.ok(requiredRepositories.has(surface.repository), `${surface.id} repository`);
   assert.match(surface.representativeHost, /degov\.ai|DAO hosts/);
+  assert.doesNotMatch(surface.analyticsTagState, /access-gap|unverified/, `${surface.id} analytics tag mapped`);
   assert.ok(surface.requiredMappingEvidence.includes("consent behavior"), `${surface.id} consent`);
   assert.ok(surface.requiredMappingEvidence.includes("retention policy"), `${surface.id} retention`);
 }
+
+assert.equal(contract.liveAnalyticsInventory.inventoryDate, "2026-08-05");
+assert.match(contract.liveAnalyticsInventory.evidenceScope, /Public production HTML readback/);
+assert.match(contract.liveAnalyticsInventory.evidenceScope, /not inferred from tag presence/);
+assertArray(contract.liveAnalyticsInventory.surfaces, "live analytics inventory surfaces");
+assert.equal(contract.liveAnalyticsInventory.surfaces.length, requiredSurfaces.size);
+assertUnique(contract.liveAnalyticsInventory.surfaces, "surface", "live analytics inventory");
+const inventoryBySurface = new Map(
+  contract.liveAnalyticsInventory.surfaces.map((surface) => [surface.surface, surface])
+);
+for (const surface of requiredSurfaces) {
+  assert.ok(inventoryBySurface.has(surface), `missing live analytics inventory ${surface}`);
+}
+for (const surface of contract.liveAnalyticsInventory.surfaces) {
+  assert.ok(requiredSurfaces.has(surface.surface), `${surface.surface} known surface`);
+  assert.ok(requiredRepositories.has(surface.repository), `${surface.surface} repository`);
+  assert.equal(
+    surface.repository,
+    surfaceInventoryById.get(surface.surface)?.repository,
+    `${surface.surface} repository must match surface inventory`
+  );
+  assert.match(
+    surface.representativeUrl,
+    /^https:\/\/([a-z0-9-]+\.)?degov\.ai\//,
+    `${surface.surface} representative URL`
+  );
+  assertPlainObject(surface.tagReadback, `${surface.surface} tag readback`);
+  assertArray(surface.tagReadback.tagIds, `${surface.surface} tag IDs`);
+  assert.equal(typeof surface.tagReadback.gtagLoaderPresent, "boolean", `${surface.surface} gtag loader`);
+  assert.equal(typeof surface.tagReadback.gtmLoaderPresent, "boolean", `${surface.surface} gtm loader`);
+  assert.ok(surface.tagReadback.evidence.length > 60, `${surface.surface} evidence`);
+  assert.ok(surface.repositoryEvidence.length > 50, `${surface.surface} repository evidence`);
+  assert.match(surface.propertyOwnerState, /not-publicly-verified|dao-owner-boundary/);
+  assert.match(surface.consentState, /not-publicly-verified/);
+  assert.match(surface.retentionState, /not-publicly-verified/);
+  assert.ok(surface.ownerBoundary.length > 20, `${surface.surface} owner boundary`);
+}
+assert.deepEqual(inventoryBySurface.get("home").tagReadback.tagIds, []);
+assert.equal(inventoryBySurface.get("home").tagReadback.state, "no-public-tag-found");
+assert.equal(inventoryBySurface.get("docs").tagReadback.state, "empty-google-property-loader");
+assert.deepEqual(inventoryBySurface.get("docs").tagReadback.tagIds, []);
+assert.equal(inventoryBySurface.get("docs").tagReadback.gtagLoaderPresent, true);
+assert.deepEqual(inventoryBySurface.get("square").tagReadback.tagIds, ["G-26505WB9XS"]);
+assert.match(inventoryBySurface.get("square").repositoryEvidence, /GOOGLE_ANALYTICS_TAG/);
+assert.deepEqual(inventoryBySurface.get("dao-sites").tagReadback.tagIds, ["G-0X2S8293S1"]);
+assert.match(inventoryBySurface.get("dao-sites").repositoryEvidence, /42 DAO YAML files/);
+assert.match(inventoryBySurface.get("dao-sites").repositoryEvidence, /G-30MY2D0MMM/);
+assert.equal(inventoryBySurface.get("atlas").tagReadback.state, "no-public-tag-found");
+assert.match(contract.liveAnalyticsInventory.completionEffect, /does not approve instrumentation changes/);
+assert.match(contract.liveAnalyticsInventory.completionEffect, /conversion baseline/);
 
 assertUnique(contract.channelDefinitions, "id", "channel definitions");
 const channelIds = new Set(contract.channelDefinitions.map((channel) => channel.id));
