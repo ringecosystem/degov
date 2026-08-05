@@ -20,6 +20,7 @@ import {
   getPublicOriginFromHost,
   shouldUseEnvironmentSiteUrl,
   shouldUseRequestSiteUrl,
+  withKnownProductionSiteUrl,
   withRequestSiteUrl,
 } from "../src/lib/request-origin.ts";
 
@@ -111,6 +112,12 @@ function assertSocialMetadata(metadata: Metadata, expectedUrl: string) {
     },
   ]);
   assert.ok(!imageUrl.includes("vercel.app"), "image URL must not use preview host");
+}
+
+function matchSourceIndex(source: string, pattern: RegExp, message: string) {
+  const match = pattern.exec(source);
+  assert.ok(match?.index !== undefined, message);
+  return match.index;
 }
 
 test("DAO social preview fallback is a public 1200x630 PNG asset", () => {
@@ -213,18 +220,71 @@ test("known stale config site URL maps to the production demo alias", () => {
   assert.equal(getKnownProductionOriginFromConfig(demoConfig), null);
 });
 
+test("shared config normalization maps stale site URL before metadata builders", () => {
+  const staleVercelConfig = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+  const config = withKnownProductionSiteUrl(
+    staleVercelConfig,
+    "https://demo.degov.ai"
+  );
+
+  assertSocialMetadata(buildSiteMetadata(config), "https://demo.degov.ai");
+  assertSocialMetadata(
+    buildProposalMetadata({
+      config,
+      proposalId:
+        "0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878",
+      title: "Normalize local config site URL",
+      description:
+        "Use the production demo alias before public metadata is generated.",
+    }),
+    "https://demo.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
+  );
+});
+
 test("request site URL override happens after remote config cache lookup", () => {
   const source = readFileSync(
     path.join(rootDir, "apps/web/src/app/_server/config-remote.ts"),
     "utf8"
   );
-  const cacheReturnIndex = source.indexOf("const result = await get();");
-  const overrideIndex = source.indexOf("shouldUseRequestSiteUrl", cacheReturnIndex);
+  const cacheReturnIndex = matchSourceIndex(
+    source,
+    /const\s+result\s*=\s*await\s+get\s*\(\s*\)\s*;/,
+    "config cache result must be read explicitly"
+  );
+  const overrideIndex = matchSourceIndex(
+    source.slice(cacheReturnIndex),
+    /shouldUseRequestSiteUrl/,
+    "request host override must be present after cache lookup"
+  );
 
-  assert.ok(cacheReturnIndex >= 0, "config cache result must be read explicitly");
   assert.ok(
-    overrideIndex > cacheReturnIndex,
+    overrideIndex >= 0,
     "request host override must run after cache lookup so cache hits are normalized"
+  );
+});
+
+test("local config path normalizes known stale site URL after YAML load", () => {
+  const source = readFileSync(
+    path.join(rootDir, "apps/web/src/lib/config.ts"),
+    "utf8"
+  );
+  const yamlLoadIndex = matchSourceIndex(
+    source,
+    /const\s+config\s*=\s*loadConfigYaml\s*\(\s*yamlText\s*\)\s*;/,
+    "local config must load YAML explicitly"
+  );
+  const normalizeIndex = matchSourceIndex(
+    source.slice(yamlLoadIndex),
+    /return\s+normalizeConfig\s*\(\s*config\s*\)\s*;/,
+    "local config must normalize stale production siteUrl before returning config"
+  );
+
+  assert.ok(
+    normalizeIndex >= 0,
+    "local config must normalize stale production siteUrl before returning config"
   );
 });
 

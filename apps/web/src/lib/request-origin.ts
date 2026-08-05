@@ -40,6 +40,16 @@ export function getKnownProductionOriginFromConfig(
   return getKnownProductionOrigin(configuredHost);
 }
 
+export function withKnownProductionSiteUrl(
+  config: Config,
+  productionOrigin?: string | null
+): Config {
+  const knownProductionOrigin = getKnownProductionOriginFromConfig(config);
+  if (!knownProductionOrigin) return config;
+
+  return withRequestSiteUrl(config, productionOrigin ?? knownProductionOrigin);
+}
+
 export function getPublicOriginFromHost(
   host: string | null | undefined
 ): string | null {
