@@ -4,7 +4,9 @@ import { headers } from "next/headers";
 import { getDaoConfigServer } from "@/lib/config";
 import { loadConfigYaml } from "@/lib/config-yaml";
 import {
+  getPublicOriginFromEnvironment,
   getPublicOriginFromHeaders,
+  shouldUseEnvironmentSiteUrl,
   shouldUseRequestSiteUrl,
   withRequestSiteUrl,
 } from "@/lib/request-origin";
@@ -14,7 +16,18 @@ import { degovApiDaoConfigServer } from "@/utils/remote-api";
 export async function getConfigCachedByHost(): Promise<Config> {
   const hdr = await headers();
   const host = hdr.get("host");
-  const publicRequestOrigin = getPublicOriginFromHeaders(hdr);
+  const headerRequestOrigin = getPublicOriginFromHeaders(hdr);
+  const environmentOrigin = getPublicOriginFromEnvironment({
+    DEGOV_PUBLIC_SITE_URL: process.env.DEGOV_PUBLIC_SITE_URL,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  });
+  const publicRequestOrigin = shouldUseEnvironmentSiteUrl({
+    requestOrigin: headerRequestOrigin,
+    environmentOrigin,
+  })
+    ? environmentOrigin
+    : headerRequestOrigin;
 
   // Resolve the canonical public origin to pass to the remote config API.
   // Next.js internal revalidation requests use the pod IP as the Host header,

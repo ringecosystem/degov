@@ -14,8 +14,10 @@ import {
   SOCIAL_PREVIEW_IMAGE_WIDTH,
 } from "../src/lib/metadata.ts";
 import {
+  getPublicOriginFromEnvironment,
   getPublicOriginFromHeaders,
   getPublicOriginFromHost,
+  shouldUseEnvironmentSiteUrl,
   shouldUseRequestSiteUrl,
   withRequestSiteUrl,
 } from "../src/lib/request-origin.ts";
@@ -244,6 +246,67 @@ test("request host override prefers forwarded public host on Vercel aliases", ()
   assertSocialMetadata(
     buildSiteMetadata(withRequestSiteUrl(config, requestOrigin)),
     "https://demo.degov.ai"
+  );
+});
+
+test("production environment origin overrides stale Vercel request hosts", () => {
+  const requestOrigin = getPublicOriginFromHeaders(
+    new Headers({ host: "degov-dev.vercel.app" })
+  );
+  const environmentOrigin = getPublicOriginFromEnvironment({
+    VERCEL_ENV: "production",
+    VERCEL_PROJECT_PRODUCTION_URL: "demo.degov.ai",
+  });
+  const config = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+
+  assert.equal(requestOrigin, "https://degov-dev.vercel.app");
+  assert.equal(environmentOrigin, "https://demo.degov.ai");
+  assert.equal(
+    shouldUseEnvironmentSiteUrl({ requestOrigin, environmentOrigin }),
+    true
+  );
+  assertSocialMetadata(
+    buildSiteMetadata(withRequestSiteUrl(config, environmentOrigin)),
+    "https://demo.degov.ai"
+  );
+});
+
+test("explicit public site URL environment accepts full HTTPS origins", () => {
+  assert.equal(
+    getPublicOriginFromEnvironment({
+      DEGOV_PUBLIC_SITE_URL: "https://demo.degov.ai",
+      VERCEL_ENV: "preview",
+      VERCEL_PROJECT_PRODUCTION_URL: "degov-dev.vercel.app",
+    }),
+    "https://demo.degov.ai"
+  );
+});
+
+test("explicit public site URL environment rejects non-origin URLs", () => {
+  for (const value of [
+    "http://demo.degov.ai",
+    "https://demo.degov.ai/path",
+    "https://demo.degov.ai?x=1",
+    "https://demo.degov.ai#hash",
+    "https://demo.degov.ai@evil.com",
+  ]) {
+    assert.equal(
+      getPublicOriginFromEnvironment({ DEGOV_PUBLIC_SITE_URL: value }),
+      null
+    );
+  }
+});
+
+test("production environment origin does not replace real DAO hosts", () => {
+  assert.equal(
+    shouldUseEnvironmentSiteUrl({
+      requestOrigin: "https://lisk.degov.ai",
+      environmentOrigin: "https://demo.degov.ai",
+    }),
+    false
   );
 });
 
