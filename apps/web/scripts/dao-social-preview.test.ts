@@ -480,6 +480,25 @@ test("private DAO routes keep explicit noindex metadata", () => {
   }
 });
 
+test("DAO homepage renders a canonical link from the validated DAO origin", () => {
+  const source = readFileSync(
+    path.join(rootDir, "apps/web/src/app/page.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /canonicalUrl\(config,\s*"\/"\)/);
+  assert.match(source, /<link rel="canonical" href={homeCanonicalUrl}/);
+});
+
+test("localized DAO homepage keeps the shared metadata generator", () => {
+  const source = readFileSync(
+    path.join(rootDir, "apps/web/src/app/[locale]/page.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /export \{ default, generateMetadata \} from "\.\.\/page";/);
+});
+
 test("no-public-preview metadata suppresses inherited canonical and social cards", () => {
   const metadata = buildNoPublicPreviewMetadata("Private route");
 
