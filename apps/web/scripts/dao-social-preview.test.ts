@@ -13,6 +13,10 @@ import {
   SOCIAL_PREVIEW_IMAGE_TYPE,
   SOCIAL_PREVIEW_IMAGE_WIDTH,
 } from "../src/lib/metadata.ts";
+import {
+  getPublicOriginFromHost,
+  withRequestSiteUrl,
+} from "../src/lib/request-origin.ts";
 
 import type { Config } from "../src/types/config.ts";
 import type { Metadata } from "next";
@@ -131,6 +135,41 @@ test("DAO public metadata uses host-correct large-image social previews", () => 
     }),
     "https://demo.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
   );
+});
+
+test("request host overrides stale config site URL for public metadata", () => {
+  const configFromRemote = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+  const config = withRequestSiteUrl(
+    configFromRemote,
+    getPublicOriginFromHost("demo.degov.ai")
+  );
+
+  assertSocialMetadata(buildSiteMetadata(config), "https://demo.degov.ai");
+  assertSocialMetadata(
+    buildProposalMetadata({
+      config,
+      proposalId:
+        "0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878",
+      title: "Fix stale production origin",
+      description: "Use the current DAO host for public sharing metadata.",
+    }),
+    "https://demo.degov.ai/proposal/0xb1318bd67737f2fe8a918bfd691ac5e69e174a0c9455bcc36b80a3ccc7caa878"
+  );
+});
+
+test("request host override rejects private or invalid hosts", () => {
+  assert.equal(getPublicOriginFromHost("127.0.0.1:3000"), null);
+  assert.equal(getPublicOriginFromHost("[::1]:3000"), null);
+  assert.equal(getPublicOriginFromHost("::1"), null);
+  assert.equal(getPublicOriginFromHost("localhost:3000"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai@evil.com"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai/path"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai?x=1"), null);
+  assert.equal(getPublicOriginFromHost("demo.degov.ai#fragment"), null);
+  assert.equal(getPublicOriginFromHost("not a host"), null);
 });
 
 test("private DAO routes keep explicit noindex metadata", () => {
