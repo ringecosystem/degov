@@ -3,7 +3,7 @@ import { buildDaoOrganizationJsonLd } from "@/lib/structured-data";
 
 import { HomeClient } from "./_components/home-client";
 import { DaoPublicSummary } from "./_components/public-route-summary";
-import { canonicalUrl, getActiveDaoConfig } from "./_server/public-seo";
+import { getActiveDaoConfig } from "./_server/public-seo";
 
 import type { Metadata } from "next";
 
@@ -15,11 +15,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function HomePage() {
   const config = await getActiveDaoConfig();
   const daoOrganizationJsonLd = buildDaoOrganizationJsonLd(config);
-  const homeCanonicalUrl = canonicalUrl(config, "/");
 
   return (
     <div className="flex flex-col gap-[20px] lg:gap-[30px]">
-      {homeCanonicalUrl ? <link rel="canonical" href={homeCanonicalUrl} /> : null}
       {daoOrganizationJsonLd ? (
         <script
           type="application/ld+json"

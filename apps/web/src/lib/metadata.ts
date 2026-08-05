@@ -89,6 +89,11 @@ export function buildSiteMetadata(
       default: `${daoName}`,
     },
     description,
+    alternates: publicSiteUrl
+      ? {
+          canonical: publicSiteUrl,
+        }
+      : undefined,
     icons: config?.logo
       ? {
           icon: [{ url: config.logo }],

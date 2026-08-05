@@ -136,6 +136,7 @@ test("DAO public metadata uses host-correct large-image social previews", () => 
   const siteMetadata = buildSiteMetadata(demoConfig);
   const homeMetadata = buildHomeMetadata(demoConfig);
 
+  assert.equal(siteMetadata.alternates?.canonical, "https://demo.degov.ai");
   assert.equal(homeMetadata.alternates?.canonical, "https://demo.degov.ai");
   assertSocialMetadata(siteMetadata, "https://demo.degov.ai");
   assertSocialMetadata(
@@ -480,16 +481,6 @@ test("private DAO routes keep explicit noindex metadata", () => {
   }
 });
 
-test("DAO homepage renders a canonical link from the validated DAO origin", () => {
-  const source = readFileSync(
-    path.join(rootDir, "apps/web/src/app/page.tsx"),
-    "utf8"
-  );
-
-  assert.match(source, /canonicalUrl\(config,\s*"\/"\)/);
-  assert.match(source, /<link rel="canonical" href={homeCanonicalUrl}/);
-});
-
 test("localized DAO homepage keeps the shared metadata generator", () => {
   const source = readFileSync(
     path.join(rootDir, "apps/web/src/app/[locale]/page.tsx"),
@@ -497,6 +488,25 @@ test("localized DAO homepage keeps the shared metadata generator", () => {
   );
 
   assert.match(source, /export \{ default, generateMetadata \} from "\.\.\/page";/);
+});
+
+test("non-home DAO routes suppress inherited homepage canonical and cards", () => {
+  const routeLayouts = [
+    "apps/web/src/app/apps/layout.tsx",
+    "apps/web/src/app/delegates/layout.tsx",
+    "apps/web/src/app/treasury/layout.tsx",
+    "apps/web/src/app/delegate/layout.tsx",
+    "apps/web/src/app/[locale]/apps/layout.tsx",
+    "apps/web/src/app/[locale]/delegates/layout.tsx",
+    "apps/web/src/app/[locale]/treasury/layout.tsx",
+    "apps/web/src/app/[locale]/delegate/layout.tsx",
+  ];
+
+  for (const layout of routeLayouts) {
+    const source = readFileSync(path.join(rootDir, layout), "utf8");
+    assert.match(source, /buildNoPublicPreviewMetadata|metadata/);
+    assert.doesNotMatch(source, /buildSiteMetadata/);
+  }
 });
 
 test("no-public-preview metadata suppresses inherited canonical and social cards", () => {
