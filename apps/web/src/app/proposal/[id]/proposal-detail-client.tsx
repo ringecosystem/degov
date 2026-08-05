@@ -21,6 +21,7 @@ import { CACHE_TIMES } from "@/utils/query-config";
 
 import { CurrentVotes } from "./current-votes";
 import { getProposalMissingState } from "./proposal-indexing-state";
+import { ProposalReadAnalytics } from "./proposal-read-analytics";
 import Status from "./status";
 import { Summary } from "./summary";
 import { Tabs } from "./tabs";
@@ -379,6 +380,12 @@ export function ProposalDetailClient() {
   }
   return (
     <div className="flex w-full flex-col gap-[20px] h-full min-h-0">
+      {data?.proposalId ? (
+        <ProposalReadAnalytics
+          daoCode={daoConfig?.code ?? ""}
+          proposalId={data.proposalId}
+        />
+      ) : null}
       <div className="flex items-center gap-1 text-[18px] font-extrabold">
         <Link
           className="text-muted-foreground hover:underline"
