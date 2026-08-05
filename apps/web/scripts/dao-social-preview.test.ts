@@ -489,7 +489,7 @@ test("AI analysis index route cannot fall through to localized home metadata", (
   );
 
   assert.match(source, /buildNoPublicPreviewMetadata\("AI analysis"\)/);
-  assert.match(source, /notFound\(\)/);
+  assert.doesNotMatch(source, /notFound/);
   assert.doesNotMatch(source, /buildHomeMetadata|buildSiteMetadata/);
 });
 
