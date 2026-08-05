@@ -274,6 +274,31 @@ test("production environment origin overrides stale Vercel request hosts", () =>
   );
 });
 
+test("production environment maps the known stale project host to the demo alias", () => {
+  const requestOrigin = getPublicOriginFromHeaders(
+    new Headers({ host: "degov-dev.vercel.app" })
+  );
+  const environmentOrigin = getPublicOriginFromEnvironment({
+    VERCEL_ENV: "production",
+    VERCEL_PROJECT_PRODUCTION_URL: "degov-dev.vercel.app",
+  });
+  const config = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+
+  assert.equal(requestOrigin, "https://degov-dev.vercel.app");
+  assert.equal(environmentOrigin, "https://demo.degov.ai");
+  assert.equal(
+    shouldUseEnvironmentSiteUrl({ requestOrigin, environmentOrigin }),
+    true
+  );
+  assertSocialMetadata(
+    buildSiteMetadata(withRequestSiteUrl(config, environmentOrigin)),
+    "https://demo.degov.ai"
+  );
+});
+
 test("explicit public site URL environment accepts full HTTPS origins", () => {
   assert.equal(
     getPublicOriginFromEnvironment({
