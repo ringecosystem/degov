@@ -14,6 +14,7 @@ import {
   SOCIAL_PREVIEW_IMAGE_WIDTH,
 } from "../src/lib/metadata.ts";
 import {
+  getPublicOriginFromHeaders,
   getPublicOriginFromHost,
   shouldUseRequestSiteUrl,
   withRequestSiteUrl,
@@ -218,6 +219,32 @@ test("request host override rejects private or invalid hosts", () => {
   assert.equal(getPublicOriginFromHost("demo.degov.ai?x=1"), null);
   assert.equal(getPublicOriginFromHost("demo.degov.ai#fragment"), null);
   assert.equal(getPublicOriginFromHost("not a host"), null);
+});
+
+test("request host override prefers forwarded public host on Vercel aliases", () => {
+  const headers = new Headers({
+    host: "degov-dev.vercel.app",
+    "x-forwarded-host": "demo.degov.ai",
+  });
+  const requestOrigin = getPublicOriginFromHeaders(headers);
+  const config = {
+    ...demoConfig,
+    siteUrl: "https://degov-dev.vercel.app",
+  };
+
+  assert.equal(requestOrigin, "https://demo.degov.ai");
+  assert.equal(
+    shouldUseRequestSiteUrl({
+      config,
+      requestOrigin,
+      requiresOrigin: false,
+    }),
+    true
+  );
+  assertSocialMetadata(
+    buildSiteMetadata(withRequestSiteUrl(config, requestOrigin)),
+    "https://demo.degov.ai"
+  );
 });
 
 test("private DAO routes keep explicit noindex metadata", () => {
