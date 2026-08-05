@@ -53,6 +53,7 @@ const requiredRawEvidenceFields = new Set([
   "raw_answer_evidence_location",
   "citation_evidence_locations",
   "evaluator",
+  "evaluator_notes",
   "storage_location",
   "storage_approval_reference",
   "redaction_notes",
