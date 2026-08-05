@@ -193,6 +193,21 @@ test("single DAO mode only overrides known stale Vercel config origins", () => {
   );
 });
 
+test("request site URL override happens after remote config cache lookup", () => {
+  const source = readFileSync(
+    path.join(rootDir, "apps/web/src/app/_server/config-remote.ts"),
+    "utf8"
+  );
+  const cacheReturnIndex = source.indexOf("const result = await get();");
+  const overrideIndex = source.indexOf("shouldUseRequestSiteUrl", cacheReturnIndex);
+
+  assert.ok(cacheReturnIndex > 0, "config cache result must be read explicitly");
+  assert.ok(
+    overrideIndex > cacheReturnIndex,
+    "request host override must run after cache lookup so cache hits are normalized"
+  );
+});
+
 test("request host override rejects private or invalid hosts", () => {
   assert.equal(getPublicOriginFromHost("127.0.0.1:3000"), null);
   assert.equal(getPublicOriginFromHost("[::1]:3000"), null);

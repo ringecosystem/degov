@@ -65,13 +65,7 @@ export async function getConfigCachedByHost(): Promise<Config> {
         const yamlText = await res.text();
         const result = loadConfigYaml(yamlText);
 
-        return shouldUseRequestSiteUrl({
-          config: result,
-          requestOrigin: publicRequestOrigin,
-          requiresOrigin,
-        })
-          ? withRequestSiteUrl(result, publicRequestOrigin)
-          : result;
+        return result;
       } catch (err) {
         console.error("[Cache] Remote config failed:", err);
         throw err;
@@ -85,5 +79,11 @@ export async function getConfigCachedByHost(): Promise<Config> {
   );
 
   const result = await get();
-  return result;
+  return shouldUseRequestSiteUrl({
+    config: result,
+    requestOrigin: publicRequestOrigin,
+    requiresOrigin: !process.env.NEXT_PUBLIC_DEGOV_DAO,
+  })
+    ? withRequestSiteUrl(result, publicRequestOrigin)
+    : result;
 }
