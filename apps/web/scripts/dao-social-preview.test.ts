@@ -310,6 +310,15 @@ test("production environment origin does not replace real DAO hosts", () => {
   );
 });
 
+test("production deploy provides the canonical public demo origin", () => {
+  const workflow = readFileSync(
+    path.join(rootDir, ".github/workflows/deploy-prd.yml"),
+    "utf8"
+  );
+
+  assert.match(workflow, /"DEGOV_PUBLIC_SITE_URL": "https:\/\/demo\.degov\.ai"/);
+});
+
 test("private DAO routes keep explicit noindex metadata", () => {
   const privateLayouts = [
     "apps/web/src/app/profile/layout.tsx",

@@ -29,7 +29,10 @@ jobs:
           cat > vercel.json <<'EOF'
           {
             "installCommand": "pnpm install --no-frozen-lockfile",
-            "buildCommand": "pnpm build:vercel"
+            "buildCommand": "pnpm build:vercel",
+            "env": {
+              "DEGOV_PUBLIC_SITE_URL": "https://demo.degov.ai"
+            }
           }
           EOF
 
