@@ -468,17 +468,29 @@ test("production deploy provides the canonical public demo origin", () => {
 });
 
 test("private DAO routes keep explicit noindex metadata", () => {
-  const privateLayouts = [
+  const privateMetadataRoutes = [
     "apps/web/src/app/profile/layout.tsx",
     "apps/web/src/app/proposals/new/layout.tsx",
     "apps/web/src/app/ai-analysis/layout.tsx",
+    "apps/web/src/app/ai-analysis/page.tsx",
   ];
 
-  for (const layout of privateLayouts) {
-    const source = readFileSync(path.join(rootDir, layout), "utf8");
+  for (const route of privateMetadataRoutes) {
+    const source = readFileSync(path.join(rootDir, route), "utf8");
     assert.match(source, /buildNoPublicPreviewMetadata/);
     assert.doesNotMatch(source, /buildSiteMetadata/);
   }
+});
+
+test("AI analysis index route cannot fall through to localized home metadata", () => {
+  const source = readFileSync(
+    path.join(rootDir, "apps/web/src/app/ai-analysis/page.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /buildNoPublicPreviewMetadata\("AI analysis"\)/);
+  assert.match(source, /notFound\(\)/);
+  assert.doesNotMatch(source, /buildHomeMetadata|buildSiteMetadata/);
 });
 
 test("localized DAO homepage keeps the shared metadata generator", () => {
