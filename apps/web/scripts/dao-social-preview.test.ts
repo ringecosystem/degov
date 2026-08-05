@@ -473,11 +473,13 @@ test("private DAO routes keep explicit noindex metadata", () => {
     "apps/web/src/app/proposals/new/layout.tsx",
     "apps/web/src/app/ai-analysis/layout.tsx",
     "apps/web/src/app/ai-analysis/page.tsx",
+    "apps/web/src/app/not-found.tsx",
+    "apps/web/src/app/[locale]/not-found.tsx",
   ];
 
   for (const route of privateMetadataRoutes) {
     const source = readFileSync(path.join(rootDir, route), "utf8");
-    assert.match(source, /buildNoPublicPreviewMetadata/);
+    assert.match(source, /buildNoPublicPreviewMetadata|metadata/);
     assert.doesNotMatch(source, /buildSiteMetadata/);
   }
 });
@@ -487,10 +489,18 @@ test("AI analysis index route cannot fall through to localized home metadata", (
     path.join(rootDir, "apps/web/src/app/ai-analysis/page.tsx"),
     "utf8"
   );
+  const localizedSource = readFileSync(
+    path.join(rootDir, "apps/web/src/app/[locale]/ai-analysis/page.tsx"),
+    "utf8"
+  );
 
   assert.match(source, /buildNoPublicPreviewMetadata\("AI analysis"\)/);
   assert.doesNotMatch(source, /notFound/);
   assert.doesNotMatch(source, /buildHomeMetadata|buildSiteMetadata/);
+  assert.match(
+    localizedSource,
+    /export \{ default, metadata \} from "\.\.\/\.\.\/ai-analysis\/page";/
+  );
 });
 
 test("localized DAO homepage keeps the shared metadata generator", () => {
