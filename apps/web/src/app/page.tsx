@@ -2,7 +2,6 @@ import { buildHomeMetadata } from "@/lib/metadata";
 import { buildDaoOrganizationJsonLd } from "@/lib/structured-data";
 
 import { HomeClient } from "./_components/home-client";
-import { DaoPublicSummary } from "./_components/public-route-summary";
 import { getActiveDaoConfig } from "./_server/public-seo";
 
 import type { Metadata } from "next";
@@ -24,7 +23,6 @@ export default async function HomePage() {
           dangerouslySetInnerHTML={{ __html: daoOrganizationJsonLd }}
         />
       ) : null}
-      <DaoPublicSummary config={config} />
       <HomeClient />
     </div>
   );
