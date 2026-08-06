@@ -8,6 +8,7 @@ import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { VoteType } from "@/config/vote";
 import { useBatchProfiles } from "@/hooks/useBatchProfiles";
 import { Link } from "@/i18n/navigation";
+import type { InitialProposalPage } from "@/lib/proposal-directory-query";
 import type { ProposalListItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -61,10 +62,12 @@ export function ProposalsTable({
   type,
   address,
   support,
+  initialPage,
 }: {
   type: "active" | "all";
   address?: Address;
   support?: SupportFilter;
+  initialPage?: InitialProposalPage;
 }) {
   const t = useTranslations("proposals");
   const { address: connectedAddress } = useAccount();
@@ -74,7 +77,8 @@ export function ProposalsTable({
     address,
     support,
     pageSize,
-    initialPageSize
+    initialPageSize,
+    initialPage
   );
 
   const proposerAddresses = useMemo(() => {
@@ -249,7 +253,11 @@ export function ProposalsTable({
         dataSource={state.data}
         columns={columns as ColumnType<ProposalListItem>[]}
         isLoading={state.isPending}
-        emptyText={t("noProposals")}
+        emptyText={
+          state.directoryLoadFailed
+            ? t("temporarilyUnavailable")
+            : t("noProposals")
+        }
         rowKey="id"
         caption={
           state.hasNextPage && (

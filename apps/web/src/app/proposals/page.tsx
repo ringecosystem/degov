@@ -1,6 +1,5 @@
 import { buildProposalDirectoryMetadata } from "@/lib/metadata";
 
-import { ProposalDirectoryPublicSummary } from "../_components/public-route-summary";
 import { getActiveDaoConfig, getPublicProposalList } from "../_server/public-seo";
 
 import { ProposalsClient } from "./proposals-client";
@@ -14,12 +13,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ProposalsPage() {
   const config = await getActiveDaoConfig();
-  const { proposals, failed } = await getPublicProposalList(config);
+  const initialPage = await getPublicProposalList(config);
 
   return (
     <div className="flex flex-col gap-[20px]">
-      <ProposalDirectoryPublicSummary config={config} proposals={proposals} failed={failed} />
-      <ProposalsClient />
+      <ProposalsClient initialPage={initialPage} />
     </div>
   );
 }

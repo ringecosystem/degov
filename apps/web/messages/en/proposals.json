@@ -12,6 +12,7 @@
   "viewMore": "View more",
   "loading": "Loading...",
   "noProposals": "No proposals",
+  "temporarilyUnavailable": "Proposal data is temporarily unavailable. The page will retry automatically.",
   "noVotes": "No votes",
   "columns": {
     "proposal": "Proposal",

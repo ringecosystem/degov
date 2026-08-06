@@ -1,16 +1,21 @@
 import { getConfigCachedByHost } from "@/app/_server/config-remote";
 import { getDaoConfigServer } from "@/lib/config";
 import {
+  fetchProposalListPage,
+  PROPOSAL_DIRECTORY_INITIAL_PAGE_SIZE,
+  PROPOSAL_LIST_ORDER_BY,
+  type InitialProposalPage,
+} from "@/lib/proposal-directory-query";
+import {
   buildGovernanceScope,
   proposalService,
   type GovernanceScope,
 } from "@/services/graphql";
-import type { ProposalItem, ProposalListItem } from "@/services/graphql/types";
+import type { ProposalItem } from "@/services/graphql/types";
 import type { Config } from "@/types/config";
 import { extractTitleAndDescription, parseDescription } from "@/utils/helpers";
 import { isDegovApiConfiguredServer } from "@/utils/remote-api";
 
-const PROPOSAL_LIST_LIMIT = 12;
 const SITEMAP_PROPOSAL_LIMIT = 500;
 
 export async function getActiveDaoConfig(): Promise<Config> {
@@ -46,25 +51,38 @@ export function publicGovernanceScope(config: Config | null | undefined): Govern
   return buildGovernanceScope(config);
 }
 
-export async function getPublicProposalList(config: Config): Promise<{
-  proposals: ProposalListItem[];
-  failed: boolean;
-}> {
+export async function getPublicProposalList(
+  config: Config
+): Promise<InitialProposalPage> {
   if (!config.indexer?.endpoint) {
-    return { proposals: [], failed: false };
+    return {
+      proposals: [],
+      failed: false,
+      pageSize: PROPOSAL_DIRECTORY_INITIAL_PAGE_SIZE,
+      updatedAt: Date.now(),
+    };
   }
 
   try {
-    const proposals = await proposalService.getProposalsList(config.indexer.endpoint, {
-      limit: PROPOSAL_LIST_LIMIT,
-      orderBy: "blockTimestamp_DESC_NULLS_LAST",
-      where: publicGovernanceScope(config),
+    const proposals = await fetchProposalListPage({
+      config,
+      limit: PROPOSAL_DIRECTORY_INITIAL_PAGE_SIZE,
     });
 
-    return { proposals, failed: false };
+    return {
+      proposals,
+      failed: false,
+      pageSize: PROPOSAL_DIRECTORY_INITIAL_PAGE_SIZE,
+      updatedAt: Date.now(),
+    };
   } catch (error) {
     console.error("Failed to load public proposal list:", error);
-    return { proposals: [], failed: true };
+    return {
+      proposals: [],
+      failed: true,
+      pageSize: PROPOSAL_DIRECTORY_INITIAL_PAGE_SIZE,
+      updatedAt: 0,
+    };
   }
 }
 
@@ -107,7 +125,7 @@ export async function getSitemapProposalIds(config: Config): Promise<string[]> {
   try {
     const proposals = await proposalService.getProposalsList(config.indexer.endpoint, {
       limit: SITEMAP_PROPOSAL_LIMIT,
-      orderBy: "blockTimestamp_DESC_NULLS_LAST",
+      orderBy: PROPOSAL_LIST_ORDER_BY,
       where: publicGovernanceScope(config),
     });
 

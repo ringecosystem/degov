@@ -25,6 +25,7 @@ import {
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useRouter } from "@/i18n/navigation";
+import type { InitialProposalPage } from "@/lib/proposal-directory-query";
 import { proposalService } from "@/services/graphql";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
@@ -57,7 +58,11 @@ const normalizeSupportParam = (value: string | null): SupportSelection => {
   return "all";
 };
 
-function ProposalsContent() {
+function ProposalsContent({
+  initialPage,
+}: {
+  initialPage?: InitialProposalPage;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const t = useTranslations("proposals");
@@ -147,12 +152,17 @@ function ProposalsContent() {
     router.push("/proposals/new");
   }, [isConnected, hasEnoughVotes, router]);
 
+  const proposalAddress = isMyProposals
+    ? address
+    : (addressParam as `0x${string}` | undefined);
+  const proposalSupport = support === "all" ? undefined : support;
+
   return (
     <div className="flex flex-col gap-[20px]">
       <div className="flex flex-col @min-[900px]:flex-row @min-[900px]:items-start gap-[20px]">
         <div className="flex-1 min-w-0 flex flex-col gap-[20px]">
           <div className="flex items-start lg:items-center flex-col lg:flex-row justify-between gap-[20px]">
-            <h3 className="text-[18px] font-extrabold">{getDisplayTitle()}</h3>
+            <h1 className="text-[18px] font-extrabold">{getDisplayTitle()}</h1>
 
             <div className="flex items-center gap-[20px] w-full lg:w-auto">
               {isConnected && (
@@ -209,23 +219,25 @@ function ProposalsContent() {
             desktop={
               <ProposalsTable
                 type="all"
-                address={
-                  isMyProposals
-                    ? address
-                    : (addressParam as `0x${string}` | undefined)
-                }
-                support={support === "all" ? undefined : support}
+                initialPage={initialPage}
+                address={proposalAddress}
+                support={proposalSupport}
               />
             }
             mobile={
               <ProposalsList
                 type="all"
-                address={
-                  isMyProposals
-                    ? address
-                    : (addressParam as `0x${string}` | undefined)
-                }
-                support={support === "all" ? undefined : support}
+                initialPage={initialPage}
+                address={proposalAddress}
+                support={proposalSupport}
+              />
+            }
+            loadingFallback={
+              <ProposalsTable
+                type="all"
+                initialPage={initialPage}
+                address={proposalAddress}
+                support={proposalSupport}
               />
             }
           />
@@ -247,7 +259,11 @@ function ProposalsContent() {
   );
 }
 
-export function ProposalsClient() {
+export function ProposalsClient({
+  initialPage,
+}: {
+  initialPage?: InitialProposalPage;
+}) {
   const t = useTranslations("proposals");
 
   return (
@@ -255,14 +271,14 @@ export function ProposalsClient() {
       fallback={
         <div className="flex flex-col gap-[30px]">
           <div className="flex items-center justify-between gap-[20px]">
-            <h3 className="text-[18px] font-extrabold">{t("title")}</h3>
+            <h1 className="text-[18px] font-extrabold">{t("title")}</h1>
             <div className="w-[300px] h-[40px] animate-pulse bg-gray-700 rounded-[100px]"></div>
           </div>
           <div className="w-full h-[400px] animate-pulse bg-gray-800 rounded-md"></div>
         </div>
       }
     >
-      <ProposalsContent />
+      <ProposalsContent initialPage={initialPage} />
     </Suspense>
   );
 }

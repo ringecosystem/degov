@@ -6,119 +6,100 @@ import { abi as GovernorAbi } from "@/config/abi/governor";
 import { DEFAULT_MULTICALL_BATCH_SIZE, DEFAULT_PAGE_SIZE } from "@/config/base";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import {
-  buildGovernanceScope,
-  proposalService,
-  type ProposalWhere,
-} from "@/services/graphql";
+  buildProposalInfiniteInitialData,
+  buildProposalListQueryKey,
+  fetchProposalListPage,
+  getProposalNextPageParam,
+  normalizeProposalInitialPageSize,
+  shouldUseProposalInitialPage,
+  type InitialProposalPage,
+  type ProposalPageParam,
+  type SupportFilter,
+} from "@/lib/proposal-directory-query";
+import { hasProposalDirectoryLoadError } from "@/lib/proposal-directory-state";
 import type { ProposalListItem } from "@/services/graphql/types";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
 
 import type { Address } from "viem";
+export type { SupportFilter } from "@/lib/proposal-directory-query";
 export type ProposalVotes = {
   againstVotes: bigint;
   forVotes: bigint;
   abstainVotes: bigint;
 };
 
-export type SupportFilter = "0" | "1" | "2";
-
-type PageParam = {
-  offset: number;
-  limit: number;
-};
-
 export function useProposalData(
   address?: Address,
   support?: SupportFilter,
   pageSize: number = DEFAULT_PAGE_SIZE,
-  initialPageSize: number = pageSize
+  initialPageSize: number = pageSize,
+  initialPage?: InitialProposalPage
 ) {
   const daoConfig = useDaoConfig();
   const { address: connectedAddress } = useAccount();
-  const normalizedInitialPageSize = Math.max(pageSize, initialPageSize);
+  const normalizedInitialPageSize = normalizeProposalInitialPageSize(
+    pageSize,
+    initialPageSize
+  );
+  const shouldUseInitialPage = shouldUseProposalInitialPage({
+    address,
+    support,
+    connectedAddress,
+    initialPageSize: initialPage?.pageSize,
+    normalizedInitialPageSize,
+  });
 
   const {
     data,
     hasNextPage,
     isPending,
+    isError,
     isFetchingNextPage,
+    dataUpdatedAt,
     error,
     fetchNextPage,
     refetch,
   } = useInfiniteQuery<ProposalListItem[]>({
-    queryKey: [
-      "proposals",
-      daoConfig?.code,
-      daoConfig?.indexer?.endpoint,
-      daoConfig,
+    queryKey: buildProposalListQueryKey({
+      config: daoConfig,
       address,
       support,
       pageSize,
-      normalizedInitialPageSize,
+      initialPageSize: normalizedInitialPageSize,
       connectedAddress,
-    ],
+    }),
     queryFn: async ({ pageParam }) => {
-      const { offset, limit } = (pageParam as PageParam) ?? {
+      const { offset, limit } = (pageParam as ProposalPageParam) ?? {
         offset: 0,
         limit: normalizedInitialPageSize,
       };
-      let whereCondition: ProposalWhere = {
-        ...buildGovernanceScope(daoConfig),
-      };
 
-      if (address && !support) {
-        whereCondition = {
-          ...buildGovernanceScope(daoConfig),
-          proposer_eq: address?.toLowerCase(),
-          OR: {
-            voters_some: {
-              voter_eq: address?.toLowerCase(),
-            },
-          },
-        };
-      } else if (address && support) {
-        whereCondition = {
-          ...buildGovernanceScope(daoConfig),
-          voters_some: {
-            voter_eq: address?.toLowerCase(),
-            support_eq: support ? parseInt(support) : undefined,
-          },
-        };
-      }
-
-      const result = await proposalService.getProposalsList(
-        daoConfig?.indexer?.endpoint as string,
-        {
-          limit,
-          offset,
-          orderBy: "blockTimestamp_DESC_NULLS_LAST",
-          where: whereCondition,
-          voter: connectedAddress?.toLowerCase(),
-        }
-      );
-
-      return result;
+      return fetchProposalListPage({
+        config: daoConfig!,
+        limit,
+        offset,
+        address,
+        support,
+        connectedAddress,
+      });
     },
     initialPageParam: {
       offset: 0,
       limit: normalizedInitialPageSize,
-    } as PageParam,
+    } as ProposalPageParam,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
-      const lastParam = (lastPageParam as PageParam) ?? {
-        offset: 0,
-        limit: normalizedInitialPageSize,
-      };
-
-      if (!lastPage || lastPage.length < lastParam.limit) {
-        return undefined;
-      }
-
-      return {
-        offset: lastParam.offset + lastPage.length,
-        limit: pageSize,
-      } satisfies PageParam;
+      return getProposalNextPageParam(
+        lastPage,
+        lastPageParam as ProposalPageParam,
+        normalizedInitialPageSize,
+        pageSize
+      );
     },
     enabled: !!daoConfig?.indexer?.endpoint,
+    initialData: shouldUseInitialPage
+      ? buildProposalInfiniteInitialData(initialPage)
+      : undefined,
+    initialDataUpdatedAt: shouldUseInitialPage ? initialPage?.updatedAt : undefined,
     retryDelay: 10_000,
     retry: 3,
   });
@@ -126,6 +107,13 @@ export function useProposalData(
   const flattenedData = useMemo<ProposalListItem[]>(() => {
     return data?.pages.flat() || [];
   }, [data]);
+
+  const directoryLoadFailed = hasProposalDirectoryLoadError({
+    isError,
+    usesInitialPage: shouldUseInitialPage,
+    initialPageFailed: initialPage?.failed ?? false,
+    dataUpdatedAt,
+  });
 
   const statusContracts = useMemo(() => {
     const proposalStatusContract = {
@@ -182,6 +170,7 @@ export function useProposalData(
       data: flattenedData,
       hasNextPage,
       isPending,
+      directoryLoadFailed,
       isFetchingNextPage,
       error,
     },

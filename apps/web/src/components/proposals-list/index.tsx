@@ -2,6 +2,7 @@ import { useTranslations } from "next-intl";
 
 import { DEFAULT_PAGE_SIZE, INITIAL_LIST_PAGE_SIZE } from "@/config/base";
 import { Link } from "@/i18n/navigation";
+import type { InitialProposalPage } from "@/lib/proposal-directory-query";
 import type { ProposalListItem } from "@/services/graphql/types";
 import { formatTimeAgo } from "@/utils/date";
 
@@ -54,10 +55,12 @@ export function ProposalsList({
   type,
   address,
   support,
+  initialPage,
 }: {
   type: "active" | "all";
   address?: Address;
   support?: SupportFilter;
+  initialPage?: InitialProposalPage;
 }) {
   const t = useTranslations("proposals");
   const pageSize = type === "active" ? 8 : DEFAULT_PAGE_SIZE;
@@ -67,7 +70,8 @@ export function ProposalsList({
     address,
     support,
     pageSize,
-    initialPageSize
+    initialPageSize,
+    initialPage
   );
 
   if (state.isPending) {
@@ -86,7 +90,9 @@ export function ProposalsList({
   if (state.data.length === 0) {
     return (
       <div className="rounded-[14px] bg-card p-[20px] text-center text-foreground/60">
-        {t("noProposals")}
+        {state.directoryLoadFailed
+          ? t("temporarilyUnavailable")
+          : t("noProposals")}
       </div>
     );
   }
