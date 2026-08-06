@@ -18,6 +18,7 @@ const app = spawn(
   ["exec", "next", "start", "-p", String(appPort)],
   {
     cwd: new URL("..", import.meta.url),
+    detached: true,
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   }
@@ -46,6 +47,34 @@ async function fetchRenderedHome() {
   throw new Error(`DAO homepage test server did not become ready: ${lastError}\n${appLogs}`);
 }
 
+function signalApp(signal) {
+  if (app.exitCode !== null || app.signalCode !== null) return;
+
+  try {
+    process.kill(-app.pid, signal);
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+}
+
+function waitForAppExit(timeoutMs) {
+  if (app.exitCode !== null || app.signalCode !== null) {
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timeout);
+      resolve(true);
+    };
+    const timeout = setTimeout(() => {
+      app.off("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    app.once("exit", onExit);
+  });
+}
+
 try {
   const html = await fetchRenderedHome();
   const configName = html.match(/<meta name="configName" content="([^"]+)"/)?.[1];
@@ -62,9 +91,9 @@ try {
 
   console.log("Verified rendered DAO homepage uses the established product UI.");
 } finally {
-  app.kill("SIGTERM");
-  await Promise.race([
-    once(app, "exit"),
-    new Promise((resolve) => setTimeout(resolve, 5_000)),
-  ]);
+  signalApp("SIGTERM");
+  if (!(await waitForAppExit(5_000))) {
+    signalApp("SIGKILL");
+    assert.ok(await waitForAppExit(5_000), "failed to stop the DAO homepage test server");
+  }
 }
