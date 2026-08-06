@@ -33,6 +33,7 @@ jobs:
           pnpm run test:seo-geo-structured-data
           pnpm run test:web-scripts
           pnpm --filter @degov/web build
+          pnpm run test:dao-home-rendered-content
 
   check-indexer:
     name: Check indexer

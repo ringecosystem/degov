@@ -18,6 +18,7 @@
     "test:indexer": "cargo test -p degov-datalens-indexer --locked",
     "test:indexer-scripts": "node apps/indexer/scripts/indexer-diagnostics.test.mjs && node apps/indexer/scripts/runtime-packaging.test.mjs && node apps/indexer/scripts/staging-deployment-contract.test.mjs && node apps/indexer/scripts/indexer-accuracy-audit.test.mjs && node apps/indexer/scripts/indexer-accuracy-diagnose.test.mjs && node apps/indexer/scripts/indexer-reconcile-diagnose.test.mjs && node apps/indexer/scripts/v4-parity-audit.test.mjs && node apps/indexer/scripts/indexer-tally-onchain-e2e.test.mjs",
     "test:dao-content-provenance": "node --test apps/web/scripts/dao-content-provenance.test.ts",
+    "test:dao-home-rendered-content": "node apps/web/scripts/dao-home-rendered-content.mjs",
     "test:seo-geo-ai-benchmark": "node scripts/check-seo-geo-ai-benchmark.mjs",
     "test:seo-geo-content-provenance": "node scripts/check-seo-geo-content-provenance.mjs",
     "test:seo-geo-crawler-policy": "node scripts/check-seo-geo-crawler-policy.mjs",
