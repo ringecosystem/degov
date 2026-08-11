@@ -821,13 +821,13 @@ pub fn render_prometheus_metrics_with_status(
     );
     metric_header(
         &mut output,
-        "degov_onchain_refresh_tasks",
+        "degov_onchain_refresh_backlog_tasks",
         "Non-completed onchain refresh task backlog count by status.",
         "gauge",
     );
     metric_header(
         &mut output,
-        "degov_onchain_refresh_ready_tasks",
+        "degov_onchain_refresh_ready_backlog_tasks",
         "Non-completed onchain refresh task backlog count ready to be claimed by status.",
         "gauge",
     );
@@ -1068,13 +1068,13 @@ pub fn render_prometheus_metrics_with_status(
         let labels = onchain_labels(row);
         append_metric(
             &mut output,
-            "degov_onchain_refresh_tasks",
+            "degov_onchain_refresh_backlog_tasks",
             &labels,
             row.tasks,
         );
         append_metric(
             &mut output,
-            "degov_onchain_refresh_ready_tasks",
+            "degov_onchain_refresh_ready_backlog_tasks",
             &labels,
             row.ready_tasks,
         );

@@ -141,10 +141,10 @@ fn test_prometheus_renderer_emits_indexer_sync_and_onchain_backlog_gauges() {
         "degov_indexer_eta_seconds{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\"} 52.2"
     ));
     assert!(output.contains(
-        "degov_onchain_refresh_tasks{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",status=\"pending\"} 15"
+        "degov_onchain_refresh_backlog_tasks{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",status=\"pending\"} 15"
     ));
     assert!(output.contains(
-        "degov_onchain_refresh_ready_tasks{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",status=\"pending\"} 9"
+        "degov_onchain_refresh_ready_backlog_tasks{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",status=\"pending\"} 9"
     ));
     assert!(output.contains(
         "degov_onchain_refresh_deferred_candidates{dao_code=\"ring-dao\",chain_id=\"46\",contract_set_id=\"dao=ring-dao|chain=46|governor=0xgovernor\",status=\"deferred\"} 7"
