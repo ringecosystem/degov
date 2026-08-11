@@ -828,7 +828,7 @@ pub fn render_prometheus_metrics_with_status(
     metric_header(
         &mut output,
         "degov_onchain_refresh_ready_backlog_tasks",
-        "Non-completed onchain refresh task backlog count ready to be claimed by status.",
+        "Non-completed onchain refresh task backlog count with next_run_at due by status.",
         "gauge",
     );
     metric_header(
