@@ -312,28 +312,43 @@ pub(super) async fn count_proposals(
 fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
     QueryBuilder::<Postgres>::new(
         r#"
+        WITH selector_coverage AS (
+          SELECT
+            segment.dao_code,
+            segment.chain_id,
+            segment.contract_set_id,
+            segment.dataset_key,
+            segment.source,
+            segment.selector,
+            MAX(segment.range_end_block) AS range_end_block
+          FROM degov_provisional_segment segment
+          WHERE segment.status = 'available'
+            AND segment.dao_code IS NOT NULL
+            AND segment.chain_id IS NOT NULL
+          GROUP BY
+            segment.dao_code,
+            segment.chain_id,
+            segment.contract_set_id,
+            segment.dataset_key,
+            segment.source,
+            segment.selector
+        ),
+        provisional_coverage AS (
+          SELECT
+            dao_code,
+            chain_id,
+            contract_set_id,
+            dataset_key,
+            MIN(range_end_block)::BIGINT AS provisional_height
+          FROM selector_coverage
+          GROUP BY dao_code, chain_id, contract_set_id, dataset_key
+        )
         SELECT
           checkpoint.dao_code,
           checkpoint.chain_id,
           checkpoint.contract_set_id,
           checkpoint.processed_height::BIGINT AS processed_height,
-          (
-            SELECT MIN(selector_coverage.range_end_block)::BIGINT
-            FROM (
-              SELECT MAX(segment.range_end_block) AS range_end_block
-              FROM degov_provisional_segment segment
-              WHERE segment.status = 'available'
-                AND segment.dao_code = checkpoint.dao_code
-                AND segment.chain_id IS NOT DISTINCT FROM checkpoint.chain_id
-                AND segment.contract_set_id = checkpoint.contract_set_id
-                AND segment.dataset_key = split_part(
-                  split_part(checkpoint.contract_set_id, 'dataset=', 2),
-                  '|',
-                  1
-                )
-              GROUP BY segment.source, segment.selector
-            ) selector_coverage
-          ) AS provisional_height,
+          provisional.provisional_height,
           checkpoint.target_height::BIGINT AS target_height,
           CASE
             WHEN checkpoint.target_height IS NULL THEN NULL
@@ -351,6 +366,15 @@ fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
           checkpoint.updated_at::TEXT AS updated_at,
           checkpoint.last_error
         FROM degov_indexer_checkpoint checkpoint
+        LEFT JOIN provisional_coverage provisional
+          ON provisional.dao_code = checkpoint.dao_code
+         AND provisional.chain_id IS NOT DISTINCT FROM checkpoint.chain_id
+         AND provisional.contract_set_id = checkpoint.contract_set_id
+         AND provisional.dataset_key = split_part(
+           split_part(checkpoint.contract_set_id, 'dataset=', 2),
+           '|',
+           1
+         )
         "#,
     )
 }
@@ -1589,7 +1613,7 @@ mod tests {
         let query = indexer_status_query();
         let sql = query.sql();
 
-        assert!(sql.contains("segment.dataset_key = split_part"));
+        assert!(sql.contains("provisional.dataset_key = split_part"));
         assert!(sql.contains("split_part(checkpoint.contract_set_id, 'dataset=', 2)"));
     }
 

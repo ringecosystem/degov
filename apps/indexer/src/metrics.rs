@@ -1339,24 +1339,41 @@ fn collect_onchain_worker_runtime_metrics() -> Vec<OnchainRefreshWorkerMetricsRo
 async fn collect_sync_metrics(pool: &PgPool) -> Result<Vec<IndexerSyncMetricsRow>, MetricsError> {
     let rows = sqlx::query(
         r#"
+        WITH selector_coverage AS (
+          SELECT
+            segment.dao_code,
+            segment.chain_id,
+            segment.contract_set_id,
+            segment.source,
+            segment.selector,
+            MAX(segment.range_end_block) AS range_end_block
+          FROM degov_provisional_segment segment
+          WHERE segment.status = 'available'
+            AND segment.dao_code IS NOT NULL
+            AND segment.chain_id IS NOT NULL
+          GROUP BY
+            segment.dao_code,
+            segment.chain_id,
+            segment.contract_set_id,
+            segment.source,
+            segment.selector
+        ),
+        provisional_coverage AS (
+          SELECT
+            dao_code,
+            chain_id,
+            contract_set_id,
+            MIN(range_end_block)::BIGINT AS provisional_height
+          FROM selector_coverage
+          GROUP BY dao_code, chain_id, contract_set_id
+        )
         SELECT
           checkpoint.dao_code,
           checkpoint.chain_id,
           checkpoint.contract_set_id,
           checkpoint.processed_height::BIGINT AS processed_height,
           checkpoint.target_height::BIGINT AS target_height,
-          (
-            SELECT MIN(selector_coverage.range_end_block)::BIGINT
-            FROM (
-              SELECT MAX(segment.range_end_block) AS range_end_block
-              FROM degov_provisional_segment segment
-              WHERE segment.status = 'available'
-                AND segment.dao_code = checkpoint.dao_code
-                AND segment.chain_id IS NOT DISTINCT FROM checkpoint.chain_id
-                AND segment.contract_set_id = checkpoint.contract_set_id
-              GROUP BY segment.source, segment.selector
-            ) selector_coverage
-          ) AS provisional_height,
+          provisional.provisional_height,
           latest.latest_height::BIGINT AS latest_height,
           CASE
             WHEN checkpoint.target_height IS NULL THEN NULL
@@ -1370,6 +1387,10 @@ async fn collect_sync_metrics(pool: &PgPool) -> Result<Vec<IndexerSyncMetricsRow
           EXTRACT(EPOCH FROM checkpoint.updated_at)::DOUBLE PRECISION AS updated_timestamp_seconds,
           checkpoint.last_error IS NOT NULL AS last_error_present
         FROM degov_indexer_checkpoint checkpoint
+        LEFT JOIN provisional_coverage provisional
+          ON provisional.dao_code = checkpoint.dao_code
+         AND provisional.chain_id IS NOT DISTINCT FROM checkpoint.chain_id
+         AND provisional.contract_set_id = checkpoint.contract_set_id
         LEFT JOIN degov_indexer_latest_head latest
           ON latest.dao_code = checkpoint.dao_code
          AND latest.chain_id = checkpoint.chain_id
