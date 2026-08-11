@@ -298,6 +298,18 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
 
     execute_concurrent_runtime_index(
         connection,
+        "onchain_refresh_task_backlog_metrics_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_backlog_metrics_idx
+         ON onchain_refresh_task (
+            dao_code, chain_id, contract_set_id, status, next_run_at
+         )
+         WHERE status <> 'completed'",
+    )
+    .await
+    .context("ensure onchain refresh backlog metrics index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
         "onchain_refresh_deferred_candidate_scope_drain_idx",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx
          ON onchain_refresh_deferred_candidate (
@@ -885,6 +897,7 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
         "onchain_refresh_task_processing_scope_retry_idx",
     )
     .await?;
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_backlog_metrics_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_rolling_metadata_preload_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_current_from_scope_idx").await?;
     drop_invalid_runtime_index(connection, "delegate_current_power_refresh_idx").await?;

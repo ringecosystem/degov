@@ -143,9 +143,9 @@ where
     ApplyRuntimeMaintenanceFuture: Future<Output = Result<()>>,
 {
     start_realtime()?;
-    let metrics_server = start_metrics().await?;
     ensure_warmup().await?;
     apply_runtime_maintenance().await?;
+    let metrics_server = start_metrics().await?;
 
     Ok(metrics_server)
 }
@@ -2254,11 +2254,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_post_schema_startup_starts_realtime_before_runtime_maintenance() {
+    async fn test_post_schema_startup_starts_metrics_after_runtime_maintenance() {
         let (realtime_started_tx, realtime_started_rx) = tokio::sync::oneshot::channel();
         let (maintenance_started_tx, maintenance_started_rx) = tokio::sync::oneshot::channel();
+        let (metrics_started_tx, metrics_started_rx) = tokio::sync::oneshot::channel();
         let realtime_start_count = Arc::new(AtomicUsize::new(0));
+        let metrics_start_count = Arc::new(AtomicUsize::new(0));
         let realtime_start_count_for_startup = realtime_start_count.clone();
+        let metrics_start_count_for_startup = metrics_start_count.clone();
         let release_maintenance = Arc::new(tokio::sync::Semaphore::new(0));
         let release_maintenance_for_startup = release_maintenance.clone();
 
@@ -2271,7 +2274,13 @@ mod tests {
                         .expect("realtime startup signal is received");
                     Ok(())
                 },
-                || async { Ok(()) },
+                || async move {
+                    metrics_start_count_for_startup.fetch_add(1, Ordering::SeqCst);
+                    metrics_started_tx
+                        .send(())
+                        .expect("metrics startup signal is received");
+                    Ok(())
+                },
                 || async { Ok(()) },
                 || async move {
                     maintenance_started_tx
@@ -2299,13 +2308,23 @@ mod tests {
             !startup.is_finished(),
             "runtime maintenance remains independent from already-started realtime work"
         );
+        assert_eq!(
+            metrics_start_count.load(Ordering::SeqCst),
+            0,
+            "metrics startup waits until runtime maintenance completes"
+        );
 
         release_maintenance.add_permits(1);
+        timeout(Duration::from_secs(1), metrics_started_rx)
+            .await
+            .expect("metrics startup begins after runtime maintenance")
+            .expect("metrics startup signal is sent");
         startup
             .await
             .expect("post-schema startup task joins")
             .expect("post-schema startup succeeds");
         assert_eq!(realtime_start_count.load(Ordering::SeqCst), 1);
+        assert_eq!(metrics_start_count.load(Ordering::SeqCst), 1);
     }
 
     #[test]

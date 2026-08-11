@@ -821,14 +821,14 @@ pub fn render_prometheus_metrics_with_status(
     );
     metric_header(
         &mut output,
-        "degov_onchain_refresh_tasks",
-        "Onchain refresh task count by status.",
+        "degov_onchain_refresh_backlog_tasks",
+        "Non-completed onchain refresh task backlog count by status.",
         "gauge",
     );
     metric_header(
         &mut output,
-        "degov_onchain_refresh_ready_tasks",
-        "Onchain refresh task count ready to be claimed by status.",
+        "degov_onchain_refresh_ready_backlog_tasks",
+        "Non-completed onchain refresh task backlog count with next_run_at due by status.",
         "gauge",
     );
     metric_header(
@@ -1068,13 +1068,13 @@ pub fn render_prometheus_metrics_with_status(
         let labels = onchain_labels(row);
         append_metric(
             &mut output,
-            "degov_onchain_refresh_tasks",
+            "degov_onchain_refresh_backlog_tasks",
             &labels,
             row.tasks,
         );
         append_metric(
             &mut output,
-            "degov_onchain_refresh_ready_tasks",
+            "degov_onchain_refresh_ready_backlog_tasks",
             &labels,
             row.ready_tasks,
         );
@@ -1416,6 +1416,7 @@ async fn collect_onchain_refresh_backlog_metrics(
             WHERE next_run_at <= FLOOR(EXTRACT(EPOCH FROM now()) * 1000)::NUMERIC
           )::BIGINT AS ready_tasks
         FROM onchain_refresh_task
+        WHERE status <> 'completed'
         GROUP BY dao_code, chain_id, contract_set_id, status
         ORDER BY dao_code, chain_id, contract_set_id, status
         "#,

@@ -340,6 +340,22 @@ async fn test_migration_applies_required_schema_to_clean_postgres() -> Result<()
     assert_index_exists(
         &database.pool,
         &database.schema,
+        "onchain_refresh_task_backlog_metrics_idx",
+    )
+    .await?;
+    assert_index_definition_contains(
+        &database.pool,
+        &database.schema,
+        "onchain_refresh_task_backlog_metrics_idx",
+        &[
+            "USING btree (dao_code, chain_id, contract_set_id, status, next_run_at)",
+            "WHERE (status <> 'completed'::text)",
+        ],
+    )
+    .await?;
+    assert_index_exists(
+        &database.pool,
+        &database.schema,
         "delegate_current_from_scope_idx",
     )
     .await?;
@@ -1101,6 +1117,7 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
     assert!(runtime_migration.contains("onchain_refresh_task_pending_scope_claim_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_failed_scope_retry_idx"));
     assert!(runtime_migration.contains("onchain_refresh_task_processing_scope_retry_idx"));
+    assert!(runtime_migration.contains("onchain_refresh_task_backlog_metrics_idx"));
     assert!(runtime_migration.contains(
         "execute_concurrent_runtime_index(\n        connection,\n        \"onchain_refresh_deferred_candidate_scope_drain_idx\",\n        \"CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx"
     ));
