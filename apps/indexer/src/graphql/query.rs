@@ -323,6 +323,8 @@ fn indexer_status_query<'a>() -> QueryBuilder<'a, Postgres> {
             MAX(segment.range_end_block) AS range_end_block
           FROM degov_provisional_segment segment
           WHERE segment.status = 'available'
+            AND segment.dao_code IS NOT NULL
+            AND segment.chain_id IS NOT NULL
           GROUP BY
             segment.dao_code,
             segment.chain_id,
