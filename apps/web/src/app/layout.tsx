@@ -9,6 +9,7 @@ import { Suspense } from "react";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDaoConfigServer } from "@/lib/config";
+import { buildGoogleAnalyticsConfig } from "@/lib/google-analytics";
 import { buildSiteMetadata } from "@/lib/metadata";
 import { ConfigProvider } from "@/providers/config.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
@@ -62,14 +63,26 @@ export async function generateMetadata(): Promise<Metadata> {
 // Analytics Scripts component that accesses dynamic data
 async function AnalyticsScripts() {
   const config = await getRemoteConfig();
-  const gaTag = config.analysis?.ga?.tag;
+  const { loaderTag, configCommands } = buildGoogleAnalyticsConfig({
+    daoCode: config.code,
+    individualTag: config.analysis?.ga?.tag,
+    aggregateTag: process.env.NEXT_PUBLIC_DEGOV_AGGREGATE_GA_TAG,
+  });
 
-  if (!gaTag) return null;
+  if (!loaderTag) return null;
+
+  const commands = configCommands
+    .map(({ tag, params }) =>
+      `gtag('config', ${JSON.stringify(tag)}${
+        params ? `, ${JSON.stringify(params)}` : ""
+      });`
+    )
+    .join("\n");
 
   return (
     <>
       <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${gaTag}`}
+        src={`https://www.googletagmanager.com/gtag/js?id=${loaderTag}`}
         strategy="afterInteractive"
       />
       <Script id="google-analytics" strategy="afterInteractive">
@@ -77,7 +90,7 @@ async function AnalyticsScripts() {
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
-          gtag('config', '${gaTag}');
+          ${commands}
         `}
       </Script>
     </>
