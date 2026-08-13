@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildGoogleAnalyticsConfig } from "../src/lib/google-analytics.ts";
+import {
+  buildGoogleAnalyticsConfig,
+  canUseAggregateAnalytics,
+} from "../src/lib/google-analytics.ts";
 
 test("configures individual and aggregate GA4 destinations", () => {
   assert.deepEqual(
@@ -50,5 +53,31 @@ test("supports aggregate-only sites", () => {
         { tag: "G-9F67255N5K", params: { dao_code: "new-dao" } },
       ],
     }
+  );
+});
+
+test("aggregate analytics only runs on production non-demo hosts", () => {
+  assert.equal(
+    canUseAggregateAnalytics({
+      isDemoDao: false,
+      siteUrl: "https://playground.degov.ai",
+    }),
+    true
+  );
+
+  for (const siteUrl of [
+    "https://playground.next.degov.ai",
+    "https://degov-preview.vercel.app",
+    "http://localhost:3000",
+    "not-a-url",
+  ]) {
+    assert.equal(canUseAggregateAnalytics({ isDemoDao: false, siteUrl }), false);
+  }
+  assert.equal(
+    canUseAggregateAnalytics({
+      isDemoDao: true,
+      siteUrl: "https://demo.degov.ai",
+    }),
+    false
   );
 });

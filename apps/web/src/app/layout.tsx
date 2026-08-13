@@ -9,7 +9,10 @@ import { Suspense } from "react";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDaoConfigServer } from "@/lib/config";
-import { buildGoogleAnalyticsConfig } from "@/lib/google-analytics";
+import {
+  buildGoogleAnalyticsConfig,
+  canUseAggregateAnalytics,
+} from "@/lib/google-analytics";
 import { buildSiteMetadata } from "@/lib/metadata";
 import { ConfigProvider } from "@/providers/config.provider";
 import { NextThemeProvider } from "@/providers/theme.provider";
@@ -66,7 +69,12 @@ async function AnalyticsScripts() {
   const { loaderTag, configCommands } = buildGoogleAnalyticsConfig({
     daoCode: config.code,
     individualTag: config.analysis?.ga?.tag,
-    aggregateTag: process.env.NEXT_PUBLIC_DEGOV_AGGREGATE_GA_TAG,
+    aggregateTag: canUseAggregateAnalytics({
+      isDemoDao: isDemoDaoConfig(config),
+      siteUrl: config.siteUrl,
+    })
+      ? process.env.DEGOV_AGGREGATE_GA_TAG
+      : undefined,
   });
 
   if (!loaderTag) return null;
