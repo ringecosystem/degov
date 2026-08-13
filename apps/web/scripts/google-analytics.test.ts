@@ -56,30 +56,26 @@ test("supports aggregate-only sites", () => {
   );
 });
 
-test("analytics only runs on production non-demo sites", () => {
+test("analytics requires explicit production deployment approval", () => {
   assert.equal(
     canUseGoogleAnalytics({
+      enabled: true,
       isDemoDao: false,
-      siteUrl: "https://playground.degov.ai",
     }),
     true
   );
 
-  for (const siteUrl of [
-    "https://playground.next.degov.ai",
-    "https://degov-preview.vercel.app",
-    "http://localhost:3000",
-    "not-a-url",
-  ]) {
-    assert.equal(
-      canUseGoogleAnalytics({ isDemoDao: false, siteUrl }),
-      false
-    );
-  }
   assert.equal(
     canUseGoogleAnalytics({
+      enabled: false,
+      isDemoDao: false,
+    }),
+    false
+  );
+  assert.equal(
+    canUseGoogleAnalytics({
+      enabled: true,
       isDemoDao: true,
-      siteUrl: "https://demo.degov.ai",
     }),
     false
   );

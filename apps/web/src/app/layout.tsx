@@ -67,8 +67,8 @@ export async function generateMetadata(): Promise<Metadata> {
 async function AnalyticsScripts() {
   const config = await getRemoteConfig();
   const analyticsEnabled = canUseGoogleAnalytics({
+    enabled: process.env.DEGOV_ANALYTICS_ENABLED === "true",
     isDemoDao: isDemoDaoConfig(config),
-    siteUrl: config.siteUrl,
   });
   const { loaderTag, configCommands } = buildGoogleAnalyticsConfig({
     daoCode: config.code,
