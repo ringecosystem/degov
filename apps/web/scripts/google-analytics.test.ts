@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   buildGoogleAnalyticsConfig,
-  canUseAggregateAnalytics,
+  canUseGoogleAnalytics,
 } from "../src/lib/google-analytics.ts";
 
 test("configures individual and aggregate GA4 destinations", () => {
@@ -56,27 +56,26 @@ test("supports aggregate-only sites", () => {
   );
 });
 
-test("aggregate analytics only runs on production non-demo hosts", () => {
+test("analytics requires explicit production deployment approval", () => {
   assert.equal(
-    canUseAggregateAnalytics({
+    canUseGoogleAnalytics({
+      enabled: true,
       isDemoDao: false,
-      siteUrl: "https://playground.degov.ai",
     }),
     true
   );
 
-  for (const siteUrl of [
-    "https://playground.next.degov.ai",
-    "https://degov-preview.vercel.app",
-    "http://localhost:3000",
-    "not-a-url",
-  ]) {
-    assert.equal(canUseAggregateAnalytics({ isDemoDao: false, siteUrl }), false);
-  }
   assert.equal(
-    canUseAggregateAnalytics({
+    canUseGoogleAnalytics({
+      enabled: false,
+      isDemoDao: false,
+    }),
+    false
+  );
+  assert.equal(
+    canUseGoogleAnalytics({
+      enabled: true,
       isDemoDao: true,
-      siteUrl: "https://demo.degov.ai",
     }),
     false
   );

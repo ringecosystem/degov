@@ -25,24 +25,12 @@ export function buildGoogleAnalyticsConfig({
   };
 }
 
-export function canUseAggregateAnalytics({
+export function canUseGoogleAnalytics({
+  enabled,
   isDemoDao,
-  siteUrl,
 }: {
+  enabled: boolean;
   isDemoDao: boolean;
-  siteUrl: string;
 }) {
-  if (isDemoDao) return false;
-
-  try {
-    const { hostname, protocol } = new URL(siteUrl);
-    return (
-      protocol === "https:" &&
-      hostname !== "localhost" &&
-      !hostname.endsWith(".next.degov.ai") &&
-      !hostname.endsWith(".vercel.app")
-    );
-  } catch {
-    return false;
-  }
+  return enabled && !isDemoDao;
 }

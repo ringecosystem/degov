@@ -11,7 +11,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDaoConfigServer } from "@/lib/config";
 import {
   buildGoogleAnalyticsConfig,
-  canUseAggregateAnalytics,
+  canUseGoogleAnalytics,
 } from "@/lib/google-analytics";
 import { buildSiteMetadata } from "@/lib/metadata";
 import { ConfigProvider } from "@/providers/config.provider";
@@ -66,13 +66,14 @@ export async function generateMetadata(): Promise<Metadata> {
 // Analytics Scripts component that accesses dynamic data
 async function AnalyticsScripts() {
   const config = await getRemoteConfig();
+  const analyticsEnabled = canUseGoogleAnalytics({
+    enabled: process.env.DEGOV_ANALYTICS_ENABLED === "true",
+    isDemoDao: isDemoDaoConfig(config),
+  });
   const { loaderTag, configCommands } = buildGoogleAnalyticsConfig({
     daoCode: config.code,
-    individualTag: config.analysis?.ga?.tag,
-    aggregateTag: canUseAggregateAnalytics({
-      isDemoDao: isDemoDaoConfig(config),
-      siteUrl: config.siteUrl,
-    })
+    individualTag: analyticsEnabled ? config.analysis?.ga?.tag : undefined,
+    aggregateTag: analyticsEnabled
       ? process.env.DEGOV_AGGREGATE_GA_TAG
       : undefined,
   });
