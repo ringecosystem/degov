@@ -25,7 +25,7 @@ export function buildGoogleAnalyticsConfig({
   };
 }
 
-export function canUseAggregateAnalytics({
+export function canUseGoogleAnalytics({
   isDemoDao,
   siteUrl,
 }: {
