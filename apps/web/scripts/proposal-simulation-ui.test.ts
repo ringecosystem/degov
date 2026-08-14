@@ -26,7 +26,7 @@ test("proposal simulation uses finalized Square endpoints and clears stale resul
   assert.match(hookSource, /values: proposal\.values\.map\(\(value\) => String\(value\)\)/);
   assert.match(
     hookSource,
-    /useEffect\(\(\) => {\s*abortRef\.current\?\.abort\(\);\s*setResult\(null\);/
+    /currentResultKey\.current = resultKey;\s*abortRef\.current\?\.abort\(\);\s*setResult\(null\);/
   );
   assert.match(hookSource, /abortRef\.current\?\.abort\(\);/);
   assert.match(hookSource, /requestKey === currentResultKey\.current/);
