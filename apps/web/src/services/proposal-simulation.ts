@@ -40,9 +40,13 @@ export interface ProposalSimulationResult {
 }
 
 const readJson = async <T>(response: Response): Promise<T> => {
-  const json = (await response.json().catch(() => ({}))) as
-    | T
-    | { error?: string };
+  let json: T | { error?: string };
+  try {
+    json = (await response.json()) as T | { error?: string };
+  } catch {
+    if (response.ok) throw new Error("Simulation API returned invalid JSON");
+    json = {};
+  }
 
   if (!response.ok) {
     const error = (json as { error?: unknown }).error;

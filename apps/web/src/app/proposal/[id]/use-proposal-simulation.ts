@@ -38,12 +38,16 @@ export function useProposalSimulation({
     };
   }, [caller, proposal]);
 
-  const resultKey = JSON.stringify({
-    canExecute,
-    caller,
-    proposalId: proposal?.proposalId,
-    payload,
-  });
+  const resultKey = useMemo(
+    () =>
+      JSON.stringify({
+        canExecute,
+        caller,
+        proposalId: proposal?.proposalId,
+        payload,
+      }),
+    [canExecute, caller, payload, proposal?.proposalId]
+  );
   const currentResultKey = useRef(resultKey);
 
   const capability = useQuery({
@@ -58,11 +62,8 @@ export function useProposalSimulation({
     isPending,
     mutate,
     reset,
-  } = useMutation({
-    mutationFn: async (requestKey: string) => {
-      if (requestKey !== currentResultKey.current) {
-        throw new Error("Simulation request is stale");
-      }
+  } = useMutation<ProposalSimulationResult, Error, string>({
+    mutationFn: async () => {
       if (!daoCode || !proposal?.proposalId || !payload) {
         throw new Error("Simulation is not ready");
       }
@@ -100,7 +101,10 @@ export function useProposalSimulation({
     canSimulate:
       canExecute && Boolean(caller) && capability.data?.enabled === true,
     isSimulating: isPending,
-    simulate: () => mutate(resultKey),
+    simulate: () => {
+      currentResultKey.current = resultKey;
+      mutate(resultKey);
+    },
     error,
     result,
     hasXAccountAction:
