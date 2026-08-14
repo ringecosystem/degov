@@ -71,6 +71,22 @@ export function ProposalSimulationResult({
             {t("gas", { gas: result.gasUsed ? String(result.gasUsed) : "-" })}
             {reason ? ` ${t("reason", { reason })}` : ""}
           </p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-[8px] break-all text-text-secondary">
+            <dt>{t("provider")}</dt>
+            <dd>{result.provider ?? "-"}</dd>
+            <dt>{t("chain")}</dt>
+            <dd>{result.chainId ?? "-"}</dd>
+            <dt>{t("block")}</dt>
+            <dd>{result.blockNumber ?? "-"}</dd>
+            <dt>{t("caller")}</dt>
+            <dd>{result.caller ?? "-"}</dd>
+            <dt>{t("simulatedAt")}</dt>
+            <dd>
+              {result.simulatedAt
+                ? new Date(result.simulatedAt).toLocaleString()
+                : "-"}
+            </dd>
+          </dl>
           {richCounts.length > 0 && (
             <p className="break-words">{richCounts.join(" · ")}</p>
           )}

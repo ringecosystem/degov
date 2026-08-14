@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { calculateDescriptionHash } from "@/hooks/useProposal";
 import type { ProposalItem } from "@/services/graphql/types";
@@ -24,6 +24,7 @@ export function useProposalSimulation({
   canExecute: boolean;
 }) {
   const [result, setResult] = useState<ProposalSimulationResult | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const payload = useMemo(() => {
     if (!proposal || !caller) return undefined;
@@ -43,6 +44,7 @@ export function useProposalSimulation({
     proposalId: proposal?.proposalId,
     payload,
   });
+  const currentResultKey = useRef(resultKey);
 
   const capability = useQuery({
     queryKey: ["proposalSimulationCapability", daoCode],
@@ -57,30 +59,48 @@ export function useProposalSimulation({
     mutate,
     reset,
   } = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (requestKey: string) => {
+      if (requestKey !== currentResultKey.current) {
+        throw new Error("Simulation request is stale");
+      }
       if (!daoCode || !proposal?.proposalId || !payload) {
         throw new Error("Simulation is not ready");
       }
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
       return simulateProposal({
         daoCode,
         proposalId: proposal.proposalId,
         payload,
+        signal: controller.signal,
       });
     },
-    onSuccess: setResult,
+    onSuccess: (nextResult, requestKey) => {
+      if (requestKey === currentResultKey.current) setResult(nextResult);
+    },
   });
 
   useEffect(() => {
+    currentResultKey.current = resultKey;
+    abortRef.current?.abort();
     setResult(null);
     reset();
+    return () => abortRef.current?.abort();
   }, [reset, resultKey]);
+
+  useEffect(() => {
+    if (!result) return;
+    const timeout = window.setTimeout(() => setResult(null), 15_000);
+    return () => window.clearTimeout(timeout);
+  }, [result]);
 
   return {
     capability: capability.data,
     canSimulate:
       canExecute && Boolean(caller) && capability.data?.enabled === true,
     isSimulating: isPending,
-    simulate: mutate,
+    simulate: () => mutate(resultKey),
     error,
     result,
     hasXAccountAction:

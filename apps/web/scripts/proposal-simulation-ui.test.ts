@@ -24,10 +24,23 @@ test("proposal simulation uses finalized Square endpoints and clears stale resul
   assert.match(serviceSource, /descriptionHash/);
   assert.match(hookSource, /calculateDescriptionHash\(proposal\.originalDescription\)/);
   assert.match(hookSource, /values: proposal\.values\.map\(\(value\) => String\(value\)\)/);
-  assert.match(hookSource, /useEffect\(\(\) => {\s*setResult\(null\);/);
-  assert.match(hookSource, /reset\(\);/);
+  assert.match(
+    hookSource,
+    /useEffect\(\(\) => {\s*abortRef\.current\?\.abort\(\);\s*setResult\(null\);/
+  );
+  assert.match(hookSource, /abortRef\.current\?\.abort\(\);/);
+  assert.match(hookSource, /requestKey === currentResultKey\.current/);
+  assert.match(hookSource, /signal: controller\.signal/);
+  assert.match(hookSource, /setTimeout\(\(\) => setResult\(null\), 15_000\)/);
   assert.match(hookSource, /canExecute,\s*caller,\s*proposalId/s);
   assert.match(hookSource, /canExecute && Boolean\(caller\) && capability\.data\?\.enabled === true/);
   assert.match(displaySource, /canSimulate &&/);
   assert.match(displaySource, /onClick\("simulate"\)/);
+  const resultSource = readSource(
+    "src/app/proposal/[id]/proposal-simulation-result.tsx"
+  );
+  assert.match(resultSource, /result\.provider/);
+  assert.match(resultSource, /result\.blockNumber/);
+  assert.match(resultSource, /result\.simulatedAt/);
+  assert.match(resultSource, /result\.caller/);
 });

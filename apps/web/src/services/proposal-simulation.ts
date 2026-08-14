@@ -22,7 +22,7 @@ export interface ProposalSimulationResult {
   fidelity: "basic" | "rich";
   provider?: "native" | "tenderly" | string;
   chainId?: number;
-  blockNumber?: number;
+  blockNumber?: string | number;
   simulatedAt?: string;
   caller?: string;
   governor?: string;
@@ -74,10 +74,12 @@ export const simulateProposal = async ({
   daoCode,
   proposalId,
   payload,
+  signal,
 }: {
   daoCode: string;
   proposalId: string;
   payload: ProposalSimulationPayload;
+  signal?: AbortSignal;
 }) => {
   const url = simulationUrl(
     `/api/v1/daos/${encodeURIComponent(daoCode)}/proposals/${encodeURIComponent(
@@ -92,6 +94,7 @@ export const simulateProposal = async ({
       "content-type": "application/json",
     },
     body: JSON.stringify(payload),
+    signal,
   });
 
   return readJson<ProposalSimulationResult>(response);
