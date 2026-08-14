@@ -35,8 +35,10 @@ interface ActionGroupDisplayProps {
   isLoading: boolean;
   votedSupport?: VoteType;
   canExecute: boolean;
+  canSimulate: boolean;
   hasTimelock: boolean;
-  onClick: (action: "vote" | "queue" | "execute") => void;
+  isSimulating: boolean;
+  onClick: (action: "vote" | "queue" | "execute" | "simulate") => void;
 }
 export const ActionGroupDisplay = ({
   status,
@@ -44,7 +46,9 @@ export const ActionGroupDisplay = ({
   onClick,
   votedSupport,
   canExecute,
+  canSimulate,
   hasTimelock,
+  isSimulating,
 }: ActionGroupDisplayProps) => {
   const t = useTranslations("proposalDetail.actionGroup");
   const voteLabels = useTranslations("proposals.voteLabels");
@@ -87,14 +91,26 @@ export const ActionGroupDisplay = ({
     // If no timelock, show Execute button directly
     if (!hasTimelock) {
       return (
-        <Button
-          className="h-[37px] rounded-[100px] focus-visible:ring-0"
-          isLoading={isLoading}
-          disabled={!canExecute}
-          onClick={() => onClick("execute")}
-        >
-          {t("execute")}
-        </Button>
+        <div className="flex items-center gap-[10px]">
+          {canSimulate && (
+            <Button
+              className="h-[37px] rounded-[100px] focus-visible:ring-0"
+              variant="outline"
+              isLoading={isSimulating}
+              onClick={() => onClick("simulate")}
+            >
+              {t("simulate")}
+            </Button>
+          )}
+          <Button
+            className="h-[37px] rounded-[100px] focus-visible:ring-0"
+            isLoading={isLoading}
+            disabled={!canExecute}
+            onClick={() => onClick("execute")}
+          >
+            {t("execute")}
+          </Button>
+        </div>
       );
     }
 
@@ -111,14 +127,26 @@ export const ActionGroupDisplay = ({
   }
   if (status === ProposalState.Queued) {
     return (
-      <Button
-        className="h-[37px] rounded-[100px] focus-visible:ring-0"
-        isLoading={isLoading}
-        disabled={!canExecute}
-        onClick={() => onClick("execute")}
-      >
-        {t("execute")}
-      </Button>
+      <div className="flex items-center gap-[10px]">
+        {canSimulate && (
+          <Button
+            className="h-[37px] rounded-[100px] focus-visible:ring-0"
+            variant="outline"
+            isLoading={isSimulating}
+            onClick={() => onClick("simulate")}
+          >
+            {t("simulate")}
+          </Button>
+        )}
+        <Button
+          className="h-[37px] rounded-[100px] focus-visible:ring-0"
+          isLoading={isLoading}
+          disabled={!canExecute}
+          onClick={() => onClick("execute")}
+        >
+          {t("execute")}
+        </Button>
+      </div>
     );
   }
   if (status === ProposalState.Executed) {
