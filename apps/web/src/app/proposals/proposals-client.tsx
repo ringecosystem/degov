@@ -24,9 +24,14 @@ import {
 } from "@/components/ui/select";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
-import { useRouter } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import type { InitialProposalPage } from "@/lib/proposal-directory-query";
 import { proposalService } from "@/services/graphql";
+import { isProposalFeatureEnabled } from "@/utils/proposal-features";
+import {
+  degovGraphqlApi,
+  isDegovApiConfiguredClient,
+} from "@/utils/remote-api";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -75,6 +80,11 @@ function ProposalsContent({
     normalizeSupportParam(supportParam)
   );
   const { isConnected, address } = useAccount();
+  const showDrafts = isProposalFeatureEnabled(
+    daoConfig,
+    "proposal-drafts",
+    isDegovApiConfiguredClient() ? degovGraphqlApi() : undefined
+  );
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
 
   const [isMyProposals, setIsMyProposals] = useState<CheckedState>(
@@ -200,7 +210,12 @@ function ProposalsContent({
                 </>
               )}
 
-              <div className="hidden lg:block">
+              <div className="hidden items-center gap-[8px] lg:flex">
+                {showDrafts && (
+                  <Button variant="outline" className="rounded-[100px]" asChild>
+                    <Link href="/proposals/drafts">{t("drafts")}</Link>
+                  </Button>
+                )}
                 <Button
                   className="flex items-center gap-[5px] rounded-[100px]"
                   onClick={handleNewProposalClick}
