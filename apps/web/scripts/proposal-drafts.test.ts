@@ -106,6 +106,8 @@ test("autosave serializes requests and handles conflicts and publish cleanup", (
   assert.match(autosave, /draft_revision_conflict:current_revision/);
   assert.match(autosave, /await inFlightRef\.current/);
   assert.match(autosave, /await deleteDraft/);
+  assert.match(autosave, /meaningful \|\| Boolean\(draftId\)/);
+  assert.match(autosave, /mountedRef\.current = true/);
 });
 
 test("editor hydrates XAccount content and deletes only after confirmed success", () => {

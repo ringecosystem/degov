@@ -78,6 +78,7 @@ export function useProposalDraftAutosave({
   const generationRef = useRef(0);
   const pausedRef = useRef(false);
   const mountedRef = useRef(true);
+  const shouldPersist = meaningful || Boolean(draftId);
 
   useEffect(() => {
     latestDocumentRef.current = document;
@@ -159,7 +160,7 @@ export function useProposalDraftAutosave({
   }, [daoCode, onSaved, saveDraft]);
 
   const enqueueCurrent = useCallback(() => {
-    if (!enabled || !meaningful || pausedRef.current) return;
+    if (!enabled || !shouldPersist || pausedRef.current) return;
     let payload: string;
     try {
       payload = serializeProposalDraftDocument(latestDocumentRef.current);
@@ -174,10 +175,10 @@ export function useProposalDraftAutosave({
     }
     pendingPayloadRef.current = payload;
     setQueueTick((value) => value + 1);
-  }, [enabled, meaningful]);
+  }, [enabled, shouldPersist]);
 
   useEffect(() => {
-    if (!enabled || !meaningful || pausedRef.current) return;
+    if (!enabled || !shouldPersist || pausedRef.current) return;
     let payload: string;
     try {
       payload = serializeProposalDraftDocument(document);
@@ -196,13 +197,14 @@ export function useProposalDraftAutosave({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [document, enabled, meaningful]);
+  }, [document, enabled, shouldPersist]);
 
   useEffect(() => {
     if (queueTick > 0) processQueue();
   }, [processQueue, queueTick]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       generationRef.current += 1;
