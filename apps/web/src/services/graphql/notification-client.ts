@@ -1,45 +1,16 @@
-import { GraphQLClient, type ClientError } from "graphql-request";
-import { cache } from "react";
+import { createRemoteGraphQLClient, requestRemote } from "./remote-client";
 
-// Note: re-auth is handled by callers (e.g., hooks/components) explicitly.
-import { clearRemoteToken, getRemoteToken } from "@/lib/auth/token-manager";
-import { degovGraphqlApi } from "@/utils/remote-api";
+import type { Variables } from "graphql-request";
 
-export const createNotificationGraphQLClient = cache(() => {
-  const endpoint = degovGraphqlApi();
-  if (!endpoint) {
-    throw new Error("DeGov API endpoint is not configured");
-  }
-  return new GraphQLClient(endpoint);
-});
+export const createNotificationGraphQLClient = createRemoteGraphQLClient;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function requestNotification<T = any, V extends object = object>(
+export async function requestNotification<
+  T = unknown,
+  V extends Variables = Variables,
+>(
   document: string,
   variables: V | undefined,
   address: string
 ): Promise<T> {
-  const client = createNotificationGraphQLClient();
-
-  const doRequest = async (): Promise<T> => {
-    const token = getRemoteToken(address);
-    if (token) client.setHeaders({ Authorization: `Bearer ${token}` });
-    return variables
-      ? await client.request<T>(document, variables)
-      : await client.request<T>(document);
-  };
-
-  try {
-    return await doRequest();
-  } catch (error) {
-    // Surface 401 to the caller for manual authentication
-    const err = error as ClientError;
-    const status = (err as { response?: { status?: number } })?.response?.status;
-    if (status === 401) {
-      clearRemoteToken(address);
-      throw err;
-    }
-    console.error("Notification GraphQL request error:", error);
-    throw error;
-  }
+  return requestRemote<T, V>(document, variables, address);
 }

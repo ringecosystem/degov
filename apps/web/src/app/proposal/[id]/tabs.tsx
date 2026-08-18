@@ -4,8 +4,14 @@ import { useTranslations } from "next-intl";
 import { useState, useMemo } from "react";
 
 import { DEFAULT_ANIMATION_DURATION } from "@/config/base";
+import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { cn } from "@/lib/utils";
 import type { ProposalItem } from "@/services/graphql/types";
+import { isProposalFeatureEnabled } from "@/utils/proposal-features";
+import {
+  degovGraphqlApi,
+  isDegovApiConfiguredClient,
+} from "@/utils/remote-api";
 
 import { TabContent } from "./tab-content";
 
@@ -41,7 +47,12 @@ const AiReview = dynamic(
   }
 );
 
-type TabType = "content" | "votes" | "ai-review";
+const Discussion = dynamic(
+  () => import("./discussion").then((mod) => mod.Discussion),
+  { loading: () => <CommentsSkeleton /> }
+);
+
+type TabType = "content" | "votes" | "ai-review" | "discussion";
 
 interface TabsProps {
   data?: ProposalItem;
@@ -55,7 +66,13 @@ const contentVariants = {
 
 export const Tabs = ({ data, isFetching }: TabsProps) => {
   const t = useTranslations("proposalDetail.tabs");
+  const daoConfig = useDaoConfig();
   const [activeTab, setActiveTab] = useState<TabType>("content");
+  const showDiscussion = isProposalFeatureEnabled(
+    daoConfig,
+    "proposal-comments",
+    isDegovApiConfiguredClient() ? degovGraphqlApi() : undefined
+  );
 
   const tabConfig = useMemo(() => {
     const baseTabs = [
@@ -73,14 +90,21 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
       },
     ];
 
+    if (showDiscussion) {
+      baseTabs.push({
+        key: "discussion" as TabType,
+        label: t("discussion"),
+      });
+    }
+
     return baseTabs;
-  }, [t]);
+  }, [showDiscussion, t]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Tab Navigation */}
-      <div className="border-b border-border/20 mb-[20px]">
-        <div className="flex gap-[32px]">
+      <div className="mb-[20px] overflow-x-auto border-b border-border/20">
+        <div className="flex min-w-max gap-[20px] sm:gap-[32px]">
           {tabConfig.map((tab) => (
             <button
               key={tab.key}
@@ -132,6 +156,15 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
           {activeTab === "ai-review" && (
             <AiReview id={data?.proposalId as string} />
           )}
+
+          {activeTab === "discussion" &&
+            data?.proposalId &&
+            daoConfig?.code && (
+              <Discussion
+                daoCode={daoConfig.code}
+                proposalId={data.proposalId}
+              />
+            )}
         </motion.div>
       </AnimatePresence>
     </div>

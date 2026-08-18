@@ -16,6 +16,11 @@ export const isDegovApiConfiguredServer = () => {
   return !!NEXT_PUBLIC_DEGOV_API;
 };
 
+export const isDegovApiConfiguredClient = () => {
+  if (isLocalConfigEnabledClient()) return false;
+  return Boolean(env("NEXT_PUBLIC_DEGOV_API"));
+};
+
 export const degovGraphqlApi = (): string | undefined => {
   const clientApi =
     typeof window !== "undefined" ? env("NEXT_PUBLIC_DEGOV_API") : undefined;

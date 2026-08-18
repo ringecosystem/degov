@@ -100,6 +100,7 @@ interface Config {
   logo: string;
   siteUrl: string;
   offChainDiscussionUrl?: string;
+  features?: string[];
   description: string;
   links: Links;
   theme?: Theme;
