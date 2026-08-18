@@ -24,6 +24,7 @@ export const generateProposalAction = (): ProposalAction => {
     content: {
       title: "",
       markdown: "\u200B",
+      discussion: "",
     },
   };
 };

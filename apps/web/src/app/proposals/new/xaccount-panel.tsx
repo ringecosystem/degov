@@ -17,6 +17,7 @@ import type { XAccountContent } from "./schema";
 interface XAccountPanelProps {
   visible: boolean;
   index: number;
+  content?: XAccountContent;
   onChange: (content: XAccountContent) => void;
   onRemove: (index: number) => void;
 }
@@ -24,6 +25,7 @@ interface XAccountPanelProps {
 export const XAccountPanel = ({
   index,
   visible,
+  content,
   onChange,
   onRemove,
 }: XAccountPanelProps) => {
@@ -31,16 +33,18 @@ export const XAccountPanel = ({
   const daoConfig = useDaoConfig();
   const xaccountSchema = useMemo(() => createXaccountSchema(t), [t]);
   const [xAccountData, setXAccountData] = useState<XAccountContent>(
-    {} as XAccountContent
+    content ?? ({} as XAccountContent)
   );
-  const [isValidJSON, setIsValidJSON] = useState<boolean>(false);
+  const [isValidJSON, setIsValidJSON] = useState<boolean>(() =>
+    xaccountSchema.safeParse(content).success
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
   useForm({
     resolver: zodResolver(xaccountSchema),
     mode: "onChange",
     reValidateMode: "onChange",
-    defaultValues: {},
+    defaultValues: content ?? {},
   });
 
   const xaccountLink = useMemo(() => {

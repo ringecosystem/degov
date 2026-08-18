@@ -13,6 +13,11 @@ import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { Link, useRouter } from "@/i18n/navigation";
+import { isProposalFeatureEnabled } from "@/utils/proposal-features";
+import {
+  degovGraphqlApi,
+  isDegovApiConfiguredClient,
+} from "@/utils/remote-api";
 
 const Faqs = dynamic(
   () => import("@/components/faqs").then((mod) => mod.Faqs),
@@ -35,6 +40,11 @@ export const Proposals = () => {
   const router = useRouter();
   const t = useTranslations("dashboard.proposals");
   const { isConnected } = useAccount();
+  const showDrafts = isProposalFeatureEnabled(
+    daoConfig,
+    "proposal-drafts",
+    isDegovApiConfiguredClient() ? degovGraphqlApi() : undefined
+  );
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
 
   const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
@@ -78,6 +88,15 @@ export const Proposals = () => {
                   </Link>
                 </Button>
               ) : null}
+              {showDrafts && (
+                <Button
+                  variant="outline"
+                  className="rounded-[100px] text-[13px] lg:text-sm"
+                  asChild
+                >
+                  <Link href="/proposals/drafts">{t("drafts")}</Link>
+                </Button>
+              )}
               <Button
                 className="flex items-center gap-[4px] lg:gap-[5px] rounded-[100px] text-[13px] lg:text-sm"
                 onClick={handleNewProposalClick}

@@ -6,6 +6,7 @@ import type { MetadataRoute } from "next";
 
 const PRIVATE_ROUTES = [
   "/proposals/new",
+  "/proposals/drafts",
   "/profile",
   "/profile/edit",
   "/ai-analysis",

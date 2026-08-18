@@ -1,5 +1,6 @@
 "use client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   Fragment,
@@ -12,6 +13,7 @@ import {
 import { toast } from "react-toastify";
 import { useImmer } from "use-immer";
 import { toHex } from "viem";
+import { useAccount } from "wagmi";
 
 import { PlusIcon } from "@/components/icons";
 import type { SuccessType } from "@/components/transaction-toast";
@@ -24,10 +26,29 @@ import {
 } from "@/components/ui/tooltip";
 import { WithConnect } from "@/components/with-connect";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
+import { useEnsureAuth } from "@/hooks/useEnsureAuth";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
+import { useProposalDraftAutosave } from "@/hooks/useProposalDraftAutosave";
+import {
+  useProposalDraft,
+  useProposalDrafts,
+} from "@/hooks/useProposalDrafts";
 import { useUnsavedChangesAlert } from "@/hooks/useUnsavedChangesAlert";
-import { useRouter } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
+import type { ProposalDraft } from "@/services/graphql/types/proposal-drafts";
+import { formatTimeAgo } from "@/utils/date";
+import {
+  hasMeaningfulProposalDraftContent,
+  parseProposalDraftDocument,
+  serializeProposalDraftDocument,
+} from "@/utils/proposal-draft-document";
+import type { ProposalDraftDocument } from "@/utils/proposal-draft-document";
+import { isProposalFeatureEnabled } from "@/utils/proposal-features";
+import {
+  degovGraphqlApi,
+  isDegovApiConfiguredClient,
+} from "@/utils/remote-api";
 
 import { CustomPanel } from "./custom-panel";
 import {
@@ -83,20 +104,42 @@ const PublishButton = ({
   );
 };
 
-export default function NewProposal() {
+function ProposalEditor({
+  initialDraft,
+  initialDocument,
+  syncEnabled,
+}: {
+  initialDraft?: ProposalDraft;
+  initialDocument?: ProposalDraftDocument;
+  syncEnabled: boolean;
+}) {
   const t = useTranslations("proposalEditor.page");
   const schemaT = useTranslations("proposalEditor");
   const panelRefs = useRef<Map<string, HTMLFormElement>>(new Map());
   const router = useRouter();
   const queryClient = useQueryClient();
   const daoConfig = useDaoConfig();
-  const [actions, setActions] = useImmer<Action[]>(DEFAULT_ACTIONS);
+  const initialActions = initialDocument?.actions ?? DEFAULT_ACTIONS;
+  const initialActionId =
+    initialDocument?.activeActionId ?? initialActions[0]?.id ?? null;
+  const [actions, setActions] = useImmer<Action[]>(initialActions);
   const [publishLoading, setPublishLoading] = useState(false);
-  const [actionUuid, setActionUuid] = useState<string>(DEFAULT_ACTIONS[0].id);
+  const [actionUuid, setActionUuid] = useState<string | null>(initialActionId);
   const [hash, setHash] = useState<string | null>(null);
-  const [tab, setTab] = useState<"edit" | "add" | "preview">("edit");
+  const [tab, setTab] = useState<"edit" | "add" | "preview">(
+    initialDocument?.tab ?? "edit"
+  );
 
-  const initialActionsRef = useRef<string>(JSON.stringify(DEFAULT_ACTIONS));
+  const initialPayload = useMemo(
+    () =>
+      serializeProposalDraftDocument({
+        actions: initialActions,
+        activeActionId: initialActionId,
+        tab: initialDocument?.tab ?? "edit",
+      }),
+    [initialActionId, initialActions, initialDocument?.tab]
+  );
+  const [savedBaseline, setSavedBaseline] = useState(initialPayload);
   const proposalSchema = useMemo(
     () => createProposalSchema(schemaT),
     [schemaT]
@@ -114,13 +157,38 @@ export default function NewProposal() {
     [schemaT]
   );
 
-  const actionsChanged = useMemo(() => {
-    const currentActionsJson = JSON.stringify(actions);
-    return currentActionsJson !== initialActionsRef.current;
-  }, [actions]);
+  const hasMeaningfulDraftContent = useMemo(
+    () => hasMeaningfulProposalDraftContent(actions),
+    [actions]
+  );
+
+  const draftDocument = useMemo<ProposalDraftDocument>(
+    () => ({ actions, activeActionId: actionUuid, tab }),
+    [actionUuid, actions, tab]
+  );
+  const currentPayload = useMemo(() => {
+    try {
+      return serializeProposalDraftDocument(draftDocument);
+    } catch {
+      return JSON.stringify(draftDocument);
+    }
+  }, [draftDocument]);
+
+  const handleDraftSaved = useCallback((payload: string) => {
+    setSavedBaseline(payload);
+  }, []);
+
+  const draftAutosave = useProposalDraftAutosave({
+    daoCode: daoConfig?.code ?? "",
+    document: draftDocument,
+    enabled: syncEnabled && Boolean(daoConfig?.code),
+    meaningful: Boolean(initialDraft) || hasMeaningfulDraftContent,
+    initialDraft,
+    onSaved: handleDraftSaved,
+  });
 
   const { resetChanges } = useUnsavedChangesAlert({
-    hasChanges: actionsChanged,
+    hasChanges: currentPayload !== savedBaseline,
     message: t("unsavedChanges"),
   });
 
@@ -263,7 +331,6 @@ export default function NewProposal() {
       );
       if (hash) {
         setHash(hash);
-        resetChanges();
       }
       return;
     } catch (error) {
@@ -275,9 +342,9 @@ export default function NewProposal() {
     } finally {
       setPublishLoading(false);
     }
-  }, [actions, createProposal, resetChanges, t]);
+  }, [actions, createProposal, t]);
 
-  const handlePublishSuccess: SuccessType = useCallback(() => {
+  const handlePublishSuccess: SuccessType = useCallback(async () => {
     const endpoint = daoConfig?.indexer?.endpoint;
     const daoCode = daoConfig?.code;
 
@@ -300,6 +367,15 @@ export default function NewProposal() {
       });
     }
 
+    if (syncEnabled) {
+      try {
+        await draftAutosave.stopAndDelete();
+      } catch {
+        toast.warning(t("draftCleanupFailed"));
+      }
+    }
+    resetChanges();
+
     if (proposalId) {
       const hexProposalId = toHex(BigInt(proposalId));
       router.push(`/proposal/${hexProposalId}`);
@@ -307,9 +383,13 @@ export default function NewProposal() {
   }, [
     daoConfig?.code,
     daoConfig?.indexer?.endpoint,
+    draftAutosave,
     proposalId,
     queryClient,
+    resetChanges,
     router,
+    syncEnabled,
+    t,
   ]);
 
   useEffect(() => {
@@ -324,7 +404,47 @@ export default function NewProposal() {
     <WithConnect>
       <div className="flex flex-col gap-[20px] p-[30px]">
         <header className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">{t("title")}</h2>
+          <div>
+            <div className="flex flex-wrap items-center gap-[10px]">
+              <h2 className="text-2xl font-semibold">{t("title")}</h2>
+              {syncEnabled && (
+                <span className="text-[12px] text-muted-foreground">
+                  {t(`draftStatus.${draftAutosave.status}`)}
+                </span>
+              )}
+            </div>
+            {syncEnabled && draftAutosave.status === "error" && (
+              <div className="mt-[6px] flex items-center gap-[8px] text-[12px] text-destructive">
+                <span>{t("draftSaveFailed")}</span>
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={draftAutosave.retry}
+                >
+                  {t("retryDraftSave")}
+                </button>
+              </div>
+            )}
+            {syncEnabled && draftAutosave.status === "conflict" && (
+              <div className="mt-[6px] flex flex-wrap items-center gap-[8px] text-[12px] text-destructive">
+                <span>{t("draftConflict")}</span>
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => window.location.reload()}
+                >
+                  {t("reloadServerDraft")}
+                </button>
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={draftAutosave.saveAsNew}
+                >
+                  {t("saveAsNewDraft")}
+                </button>
+              </div>
+            )}
+          </div>
           {actions.length === 0 ||
           [...validationState.values()].some((v) => !v) ? (
             <Tooltip>
@@ -407,6 +527,7 @@ export default function NewProposal() {
                       index={actions.findIndex(
                         (action) => action.id === actionUuid
                       )}
+                      content={action?.content as XAccountContent}
                       onChange={handleXAccountContentChange}
                       onRemove={handleRemoveAction}
                     />
@@ -432,4 +553,237 @@ export default function NewProposal() {
       )}
     </WithConnect>
   );
+}
+
+function DraftGate({ children }: { children: React.ReactNode }) {
+  return (
+    <WithConnect>
+      <div className="mx-auto flex min-h-[420px] w-full max-w-[720px] items-center px-[20px] py-[40px]">
+        {children}
+      </div>
+    </WithConnect>
+  );
+}
+
+export default function NewProposal() {
+  const t = useTranslations("proposalEditor.page");
+  const daoConfig = useDaoConfig();
+  const searchParams = useSearchParams();
+  const draftId = searchParams?.get("draft") ?? undefined;
+  const { address, isConnected } = useAccount();
+  const { ensureAuth, isAuthenticating } = useEnsureAuth();
+  const [authReady, setAuthReady] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
+  const [continueUnsynced, setContinueUnsynced] = useState(false);
+  const [startFresh, setStartFresh] = useState(false);
+  const attemptedAddressRef = useRef<string | null>(null);
+
+  const draftsEnabled = isProposalFeatureEnabled(
+    daoConfig,
+    "proposal-drafts",
+    isDegovApiConfiguredClient() ? degovGraphqlApi() : undefined
+  );
+
+  const authenticateDrafts = useCallback(async () => {
+    setAuthFailed(false);
+    const result = await ensureAuth();
+    setAuthReady(result.success);
+    setAuthFailed(!result.success);
+  }, [ensureAuth]);
+
+  useEffect(() => {
+    if (!draftsEnabled || !isConnected || !address || continueUnsynced) return;
+    const normalized = address.toLowerCase();
+    if (attemptedAddressRef.current === normalized) return;
+    attemptedAddressRef.current = normalized;
+    setAuthReady(false);
+    void authenticateDrafts();
+  }, [
+    address,
+    authenticateDrafts,
+    continueUnsynced,
+    draftsEnabled,
+    isConnected,
+  ]);
+
+  const draftsQuery = useProposalDrafts(
+    daoConfig?.code ?? "",
+    draftsEnabled && authReady && !draftId
+  );
+  const draftQuery = useProposalDraft(
+    daoConfig?.code ?? "",
+    draftId,
+    draftsEnabled && authReady && Boolean(draftId)
+  );
+  const recentDrafts = useMemo(
+    () => draftsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [draftsQuery.data]
+  );
+  const parsedDraft = useMemo(() => {
+    const draft = draftQuery.data;
+    if (!draft?.payload) return undefined;
+    try {
+      return parseProposalDraftDocument(draft.payload, draft.payloadVersion);
+    } catch {
+      return undefined;
+    }
+  }, [draftQuery.data]);
+
+  if (!draftsEnabled || continueUnsynced) {
+    return <ProposalEditor syncEnabled={false} />;
+  }
+
+  if (!isConnected || !address) {
+    return (
+      <DraftGate>
+        <div />
+      </DraftGate>
+    );
+  }
+
+  if (isAuthenticating || (!authReady && !authFailed)) {
+    return (
+      <DraftGate>
+        <div className="w-full text-center text-muted-foreground">
+          {t("loadingDrafts")}
+        </div>
+      </DraftGate>
+    );
+  }
+
+  if (authFailed) {
+    return (
+      <DraftGate>
+        <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
+          <h2 className="text-[20px] font-semibold">
+            {t("draftSyncUnavailable")}
+          </h2>
+          <p className="mt-[8px] text-[14px] text-muted-foreground">
+            {t("draftSyncUnavailableDescription")}
+          </p>
+          <div className="mt-[20px] flex flex-wrap gap-[10px]">
+            <Button onClick={authenticateDrafts}>{t("retryDraftSync")}</Button>
+            <Button
+              variant="outline"
+              onClick={() => setContinueUnsynced(true)}
+            >
+              {t("continueWithoutSync")}
+            </Button>
+          </div>
+        </div>
+      </DraftGate>
+    );
+  }
+
+  if (draftId) {
+    if (draftQuery.isLoading) {
+      return (
+        <DraftGate>
+          <div className="w-full text-center text-muted-foreground">
+            {t("loadingDraft")}
+          </div>
+        </DraftGate>
+      );
+    }
+    if (draftQuery.isError || !draftQuery.data || !parsedDraft) {
+      return (
+        <DraftGate>
+          <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
+            <h2 className="text-[20px] font-semibold">
+              {t("draftLoadFailed")}
+            </h2>
+            <p className="mt-[8px] text-[14px] text-muted-foreground">
+              {t("draftLoadFailedDescription")}
+            </p>
+            <div className="mt-[20px] flex gap-[10px]">
+              <Button onClick={() => draftQuery.refetch()}>{t("retry")}</Button>
+              <Button variant="outline" asChild>
+                <Link href="/proposals/drafts">{t("viewDrafts")}</Link>
+              </Button>
+            </div>
+          </div>
+        </DraftGate>
+      );
+    }
+    return (
+      <ProposalEditor
+        initialDraft={draftQuery.data}
+        initialDocument={parsedDraft}
+        syncEnabled
+      />
+    );
+  }
+
+  if (draftsQuery.isLoading) {
+    return (
+      <DraftGate>
+        <div className="w-full text-center text-muted-foreground">
+          {t("loadingDrafts")}
+        </div>
+      </DraftGate>
+    );
+  }
+
+  if (draftsQuery.isError) {
+    return (
+      <DraftGate>
+        <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
+          <h2 className="text-[20px] font-semibold">
+            {t("draftSyncUnavailable")}
+          </h2>
+          <p className="mt-[8px] text-[14px] text-muted-foreground">
+            {t("draftSyncUnavailableDescription")}
+          </p>
+          <div className="mt-[20px] flex gap-[10px]">
+            <Button onClick={() => draftsQuery.refetch()}>{t("retry")}</Button>
+            <Button
+              variant="outline"
+              onClick={() => setContinueUnsynced(true)}
+            >
+              {t("continueWithoutSync")}
+            </Button>
+          </div>
+        </div>
+      </DraftGate>
+    );
+  }
+
+  if (recentDrafts.length > 0 && !startFresh) {
+    return (
+      <DraftGate>
+        <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
+          <h2 className="text-[20px] font-semibold">{t("continueDraft")}</h2>
+          <p className="mt-[8px] text-[14px] text-muted-foreground">
+            {t("continueDraftDescription")}
+          </p>
+          <div className="mt-[20px] divide-y divide-border/30">
+            {recentDrafts.slice(0, 3).map((draft) => (
+              <Link
+                key={draft.id}
+                href={`/proposals/new?draft=${draft.id}`}
+                className="flex items-center justify-between gap-[20px] py-[14px] hover:opacity-70"
+              >
+                <span className="min-w-0 truncate font-medium">
+                  {draft.title}
+                </span>
+                <span className="shrink-0 text-[12px] text-muted-foreground">
+                  {formatTimeAgo(String(new Date(draft.utime).getTime()))}
+                </span>
+              </Link>
+            ))}
+          </div>
+          <div className="mt-[20px] flex flex-wrap gap-[10px]">
+            <Button onClick={() => setStartFresh(true)}>
+              {t("startNewProposal")}
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/proposals/drafts">{t("viewAllDrafts")}</Link>
+            </Button>
+          </div>
+        </div>
+      </DraftGate>
+    );
+  }
+
+  return <ProposalEditor syncEnabled />;
 }
