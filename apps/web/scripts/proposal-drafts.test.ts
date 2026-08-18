@@ -93,6 +93,33 @@ test("proposal draft document rejects corrupt, unsupported, and unsafe structure
       ),
     /invalid/
   );
+  assert.throws(
+    () =>
+      parseProposalDraftDocument(
+        JSON.stringify({ ...document, unsupported: true }),
+        1
+      ),
+    /invalid/
+  );
+  assert.throws(
+    () =>
+      parseProposalDraftDocument(
+        JSON.stringify({
+          ...document,
+          actions: [
+            {
+              ...document.actions[0],
+              content: {
+                ...document.actions[0].content,
+                unsupported: true,
+              },
+            },
+          ],
+        }),
+        1
+      ),
+    /invalid/
+  );
 });
 
 test("autosave serializes requests and handles conflicts and publish cleanup", () => {
@@ -108,6 +135,7 @@ test("autosave serializes requests and handles conflicts and publish cleanup", (
   assert.match(autosave, /await deleteDraft/);
   assert.match(autosave, /meaningful \|\| Boolean\(draftId\)/);
   assert.match(autosave, /mountedRef\.current = true/);
+  assert.match(autosave, /draft_cleanup_skipped_conflict/);
 });
 
 test("editor hydrates XAccount content and deletes only after confirmed success", () => {

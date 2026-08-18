@@ -11,21 +11,25 @@ const addressLike = boundedString(256);
 const proposalAction = z.object({
   id: actionID,
   type: z.literal("proposal"),
-  content: z.object({
-    title: boundedString(1_000).optional(),
-    markdown: boundedString(900_000).optional(),
-    discussion: boundedString(4_096).optional(),
-  }),
-});
+  content: z
+    .object({
+      title: boundedString(1_000).optional(),
+      markdown: boundedString(900_000).optional(),
+      discussion: boundedString(4_096).optional(),
+    })
+    .strict(),
+}).strict();
 
 const transferAction = z.object({
   id: actionID,
   type: z.literal("transfer"),
-  content: z.object({
-    recipient: addressLike,
-    amount: boundedString(256),
-  }),
-});
+  content: z
+    .object({
+      recipient: addressLike,
+      amount: boundedString(256),
+    })
+    .strict(),
+}).strict();
 
 const calldataItem = z.object({
   name: boundedString(256),
@@ -35,53 +39,60 @@ const calldataItem = z.object({
     z.array(boundedString(20_000)).max(1_000),
   ]),
   isArray: z.boolean(),
-});
+}).strict();
 
 const customAction = z.object({
   id: actionID,
   type: z.literal("custom"),
-  content: z.object({
-    target: addressLike,
-    contractType: boundedString(256),
-    contractMethod: boundedString(512),
-    calldata: z.array(calldataItem).max(1_000).optional(),
-    value: boundedString(256).optional(),
-    customAbiContent: z.array(z.unknown()).max(2_000),
-  }),
-});
+  content: z
+    .object({
+      target: addressLike,
+      contractType: boundedString(256),
+      contractMethod: boundedString(512),
+      calldata: z.array(calldataItem).max(1_000).optional(),
+      value: boundedString(256).optional(),
+      customAbiContent: z.array(z.unknown()).max(2_000),
+    })
+    .strict(),
+}).strict();
 
 const xAccountAction = z.object({
   id: actionID,
   type: z.literal("xaccount"),
-  content: z.object({
-    sourceChainId: z.number().finite().optional(),
-    targetChainId: z.number().finite().optional(),
-    crossChainCallHash: boundedString(256).optional(),
-    transaction: z
-      .object({
-        from: addressLike.optional(),
-        to: addressLike.optional(),
-        value: boundedString(256).optional(),
-        calldata: boundedString(900_000).optional(),
-      })
-      .optional(),
-    crossChainCall: z
-      .object({
-        port: addressLike.optional(),
-        value: boundedString(256).optional(),
-        function: boundedString(512).optional(),
-        params: z
-          .object({
-            toChainId: boundedString(256).optional(),
-            toDapp: addressLike.optional(),
-            message: boundedString(900_000).optional(),
-            params: boundedString(900_000).optional(),
-          })
-          .optional(),
-      })
-      .optional(),
-  }),
-});
+  content: z
+    .object({
+      sourceChainId: z.number().finite().optional(),
+      targetChainId: z.number().finite().optional(),
+      crossChainCallHash: boundedString(256).optional(),
+      transaction: z
+        .object({
+          from: addressLike.optional(),
+          to: addressLike.optional(),
+          value: boundedString(256).optional(),
+          calldata: boundedString(900_000).optional(),
+        })
+        .strict()
+        .optional(),
+      crossChainCall: z
+        .object({
+          port: addressLike.optional(),
+          value: boundedString(256).optional(),
+          function: boundedString(512).optional(),
+          params: z
+            .object({
+              toChainId: boundedString(256).optional(),
+              toDapp: addressLike.optional(),
+              message: boundedString(900_000).optional(),
+              params: boundedString(900_000).optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+}).strict();
 
 const draftAction = z.discriminatedUnion("type", [
   proposalAction,
@@ -96,6 +107,7 @@ export const proposalDraftDocumentSchema = z
     activeActionId: actionID.nullable(),
     tab: z.enum(["edit", "add", "preview"]),
   })
+  .strict()
   .superRefine((document, context) => {
     const ids = new Set(document.actions.map((action) => action.id));
     if (ids.size !== document.actions.length) {

@@ -77,6 +77,7 @@ export function useProposalDraftAutosave({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
   const pausedRef = useRef(false);
+  const conflictedRef = useRef(false);
   const mountedRef = useRef(true);
   const shouldPersist = meaningful || Boolean(draftId);
 
@@ -132,6 +133,7 @@ export function useProposalDraftAutosave({
           );
           if (revisionMatch) {
             pausedRef.current = true;
+            conflictedRef.current = true;
             setCurrentRevision(Number(revisionMatch[1]));
             setStatus("conflict");
           } else {
@@ -215,12 +217,14 @@ export function useProposalDraftAutosave({
 
   const retry = useCallback(() => {
     pausedRef.current = false;
+    conflictedRef.current = false;
     setCurrentRevision(null);
     enqueueCurrent();
   }, [enqueueCurrent]);
 
   const saveAsNew = useCallback(() => {
     pausedRef.current = false;
+    conflictedRef.current = false;
     draftIdRef.current = undefined;
     setDraftId(undefined);
     revisionRef.current = undefined;
@@ -231,6 +235,9 @@ export function useProposalDraftAutosave({
   }, [enqueueCurrent]);
 
   const stopAndDelete = useCallback(async () => {
+    if (conflictedRef.current) {
+      throw new Error("draft_cleanup_skipped_conflict");
+    }
     if (timerRef.current) clearTimeout(timerRef.current);
     pendingPayloadRef.current = null;
     if (inFlightRef.current) await inFlightRef.current;
