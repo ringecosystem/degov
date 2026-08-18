@@ -103,8 +103,8 @@ export const Tabs = ({ data, isFetching }: TabsProps) => {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Tab Navigation */}
-      <div className="border-b border-border/20 mb-[20px]">
-        <div className="flex gap-[32px]">
+      <div className="mb-[20px] overflow-x-auto border-b border-border/20">
+        <div className="flex min-w-max gap-[20px] sm:gap-[32px]">
           {tabConfig.map((tab) => (
             <button
               key={tab.key}

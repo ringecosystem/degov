@@ -35,6 +35,8 @@ test("discussion stays distinct from on-chain vote reasons", () => {
   assert.match(tabs, /activeTab === "votes"/);
   assert.match(tabs, /activeTab === "discussion"/);
   assert.match(tabs, /proposal-comments/);
+  assert.match(tabs, /overflow-x-auto/);
+  assert.match(tabs, /min-w-max/);
 });
 
 test("provider markdown is sanitized before rendering", () => {
@@ -58,6 +60,7 @@ test("remote GraphQL authentication is scoped to every request", () => {
   );
   assert.match(client, /requestHeaders/);
   assert.match(client, /getRemoteToken\(address\)/);
+  assert.match(client, /isDegovApiConfiguredClient\(\)/);
   assert.doesNotMatch(client, /setHeaders/);
   assert.match(notificationClient, /requestRemote/);
 });

@@ -8,10 +8,15 @@ import { cache } from "react";
 
 import { clearRemoteToken, getRemoteToken } from "@/lib/auth/token-manager";
 import { isAuthenticationRequired } from "@/utils/graphql-error-handler";
-import { degovGraphqlApi } from "@/utils/remote-api";
+import {
+  degovGraphqlApi,
+  isDegovApiConfiguredClient,
+} from "@/utils/remote-api";
 
 export const createRemoteGraphQLClient = cache(() => {
-  const endpoint = degovGraphqlApi();
+  const endpoint = isDegovApiConfiguredClient()
+    ? degovGraphqlApi()
+    : undefined;
   if (!endpoint) {
     throw new Error("DeGov API endpoint is not configured");
   }
