@@ -18,7 +18,31 @@
   "tabs": {
     "content": "Content",
     "votes": "Votes",
-    "summary": "Summary"
+    "summary": "Summary",
+    "discussion": "Discussion"
+  },
+  "discussion": {
+    "placeholder": "Add to the discussion…",
+    "replyPlaceholder": "Write a reply…",
+    "markdownSupported": "Markdown supported",
+    "comment": "Comment",
+    "reply": "Reply",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edited": "edited",
+    "deleted": "Comment deleted",
+    "deleteConfirm": "Delete this comment? Replies will remain visible.",
+    "empty": "No discussion yet",
+    "emptyDescription": "Start a public conversation about this proposal.",
+    "loading": "Loading discussion",
+    "loadMore": "Load more",
+    "retry": "Retry",
+    "unavailable": "Discussion is temporarily unavailable",
+    "unavailableDescription": "The proposal remains available. Try loading the discussion again.",
+    "authCancelled": "Connect and sign in to comment.",
+    "mutationFailed": "The comment could not be saved. Please try again."
   },
   "dropdown": {
     "cancelProposal": "Cancel Proposal"

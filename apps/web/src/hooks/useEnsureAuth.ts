@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { siweService } from "@/lib/auth/siwe-service";
+import { tokenManager } from "@/lib/auth/token-manager";
+import { degovGraphqlApi } from "@/utils/remote-api";
 
 import { useSiweAuth } from "./useSiweAuth";
 
@@ -43,7 +45,9 @@ export const useEnsureAuth = () => {
       }
 
       const currentSession = await siweService.getAuthStatus(address);
-      if (currentSession.authenticated) {
+      const remoteAuthReady =
+        !degovGraphqlApi() || Boolean(tokenManager.getRemoteToken(address));
+      if (currentSession.authenticated && remoteAuthReady) {
         setIsAuthenticated(true);
         return { success: true };
       }
