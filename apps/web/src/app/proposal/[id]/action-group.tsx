@@ -25,6 +25,8 @@ import { CACHE_TIMES } from "@/utils/query-config";
 import { ActionGroupDisplay } from "./action-group-display";
 import { CancelProposal } from "./cancel-proposal";
 import { Dropdown } from "./dropdown";
+import { ProposalSimulationResult } from "./proposal-simulation-result";
+import { useProposalSimulation } from "./use-proposal-simulation";
 import { Voting } from "./voting";
 
 interface ActionGroupProps {
@@ -349,8 +351,22 @@ export default function ActionGroup({
     currentTime,
   ]);
 
+  const {
+    canSimulate,
+    isSimulating,
+    simulate,
+    error: simulationError,
+    result: simulationResult,
+    hasXAccountAction,
+  } = useProposalSimulation({
+    daoCode: daoConfig?.code,
+    proposal: data,
+    caller: address,
+    canExecute,
+  });
+
   const handleAction = useCallback(
-    (action: "vote" | "queue" | "execute") => {
+    (action: "vote" | "queue" | "execute" | "simulate") => {
       const isValid = validateBeforeExecution();
       if (!isValid) return;
       switch (action) {
@@ -363,9 +379,12 @@ export default function ActionGroup({
         case "execute":
           handleExecuteProposal();
           break;
+        case "simulate":
+          simulate();
+          break;
       }
     },
-    [handleQueueProposal, handleExecuteProposal, validateBeforeExecution]
+    [handleQueueProposal, handleExecuteProposal, simulate, validateBeforeExecution]
   );
 
   const votedSupport = useMemo(() => {
@@ -377,29 +396,38 @@ export default function ActionGroup({
   }, [address, hasVoted, data]);
 
   return (
-    <div className="flex items-center justify-end gap-[10px]">
-      {isAllQueriesFetching ? (
-        <Skeleton className="h-[37px] w-[100px] rounded-[100px]" />
-      ) : (
-        <ActionGroupDisplay
-          status={status}
-          votedSupport={votedSupport}
-          canExecute={canExecute}
-          hasTimelock={hasTimelock}
-          isLoading={
-            isPendingCastVote ||
-            !!castVoteHash ||
-            isPendingQueue ||
-            !!queueHash ||
-            isPendingExecute ||
-            !!executeHash
-          }
-          onClick={handleAction}
+    <div className="flex flex-col items-end gap-[10px]">
+      <div className="flex items-center justify-end gap-[10px]">
+        {isAllQueriesFetching ? (
+          <Skeleton className="h-[37px] w-[100px] rounded-[100px]" />
+        ) : (
+          <ActionGroupDisplay
+            status={status}
+            votedSupport={votedSupport}
+            canExecute={canExecute}
+            canSimulate={canSimulate}
+            hasTimelock={hasTimelock}
+            isSimulating={isSimulating}
+            isLoading={
+              isPendingCastVote ||
+              !!castVoteHash ||
+              isPendingQueue ||
+              !!queueHash ||
+              isPendingExecute ||
+              !!executeHash
+            }
+            onClick={handleAction}
+          />
+        )}
+        <Dropdown
+          handleCancelProposal={handleShowCancelDialog}
+          showCancel={status === ProposalState.Pending && isConnected}
         />
-      )}
-      <Dropdown
-        handleCancelProposal={handleShowCancelDialog}
-        showCancel={status === ProposalState.Pending && isConnected}
+      </div>
+      <ProposalSimulationResult
+        result={simulationResult}
+        error={simulationError}
+        hasXAccountAction={canSimulate && hasXAccountAction}
       />
       <Voting
         open={voting}

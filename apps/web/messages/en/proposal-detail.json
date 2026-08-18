@@ -63,6 +63,7 @@
   },
   "actionGroup": {
     "voteOnchain": "Vote Onchain",
+    "simulate": "Simulate execution",
     "execute": "Execute",
     "queue": "Queue",
     "votingStartsSoon": "Voting starts soon",
@@ -71,6 +72,25 @@
     "proposalCanceled": "Proposal canceled",
     "proposalExpired": "Proposal expired",
     "proposalDefeated": "Proposal defeated"
+  },
+  "simulation": {
+    "success": "Success",
+    "reverted": "Reverted",
+    "limitedFidelity": "Limited fidelity",
+    "richFidelity": "Rich fidelity",
+    "gas": "Gas: {gas}",
+    "reason": "Reason: {reason}",
+    "provider": "Provider",
+    "chain": "Chain",
+    "block": "Block",
+    "caller": "Caller",
+    "simulatedAt": "Simulated at",
+    "requestFailed": "Simulation failed: {message}",
+    "xAccountWarning": "XAccount simulation covers source-chain dispatch only.",
+    "calls": "{count} calls",
+    "logs": "{count} logs",
+    "assetChanges": "{count} asset changes",
+    "stateChanges": "{count} state changes"
   },
   "comments": {
     "clickToViewComment": "Click to view comment",

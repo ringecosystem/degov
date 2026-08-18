@@ -27,6 +27,26 @@ export const degovGraphqlApi = (): string | undefined => {
     : `${NEXT_PUBLIC_DEGOV_API}/graphql`;
 };
 
+export const degovRestApi = (): string | undefined => {
+  if (
+    typeof window !== "undefined"
+      ? isLocalConfigEnabledClient()
+      : isLocalConfigEnabledServer()
+  ) {
+    return undefined;
+  }
+
+  const clientApi =
+    typeof window !== "undefined" ? env("NEXT_PUBLIC_DEGOV_API") : undefined;
+  const NEXT_PUBLIC_DEGOV_API = clientApi || process.env.NEXT_PUBLIC_DEGOV_API;
+
+  if (!NEXT_PUBLIC_DEGOV_API) return undefined;
+
+  return NEXT_PUBLIC_DEGOV_API.endsWith("/graphql")
+    ? NEXT_PUBLIC_DEGOV_API.slice(0, -"/graphql".length)
+    : NEXT_PUBLIC_DEGOV_API;
+};
+
 export const degovApiDaoConfigServer = (): string | undefined => {
   if (isLocalConfigEnabledServer()) return undefined;
   const NEXT_PUBLIC_DEGOV_API = process.env.NEXT_PUBLIC_DEGOV_API;
