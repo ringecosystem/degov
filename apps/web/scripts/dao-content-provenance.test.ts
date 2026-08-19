@@ -33,7 +33,7 @@ test("proposal detail keeps its crawler fallback out of the interactive UI", () 
 
   assert.match(
     pageSource,
-    /<noscript>[\s\S]*<ProposalDetailPublicSummary[\s\S]*<\/noscript>/
+    /<noscript dangerouslySetInnerHTML=\{\{ __html: proposalSummaryHtml \}\} \/>/
   );
   assert.match(pageSource, /<ProposalDetailClient \/>/);
   assert.match(pageSource, /buildProposalWebPageJsonLd\(config, proposal\)/);
