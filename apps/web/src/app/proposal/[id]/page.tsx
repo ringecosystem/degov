@@ -31,7 +31,10 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
           dangerouslySetInnerHTML={{ __html: proposalJsonLd }}
         />
       ) : null}
-      <noscript dangerouslySetInnerHTML={{ __html: proposalSummaryHtml }} />
+      <noscript
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: proposalSummaryHtml }}
+      />
       <ProposalDetailClient />
     </div>
   );
