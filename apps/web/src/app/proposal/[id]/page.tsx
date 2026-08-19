@@ -31,8 +31,9 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
           dangerouslySetInnerHTML={{ __html: proposalJsonLd }}
         />
       ) : null}
-      <noscript
-        suppressHydrationWarning
+      <div
+        hidden
+        data-crawler-summary=""
         dangerouslySetInnerHTML={{ __html: proposalSummaryHtml }}
       />
       <ProposalDetailClient />
