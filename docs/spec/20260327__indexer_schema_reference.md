@@ -1,7 +1,7 @@
 # DeGov Indexer Schema Reference
 
 > Historical reference: this schema documents the previous GraphQL-visible data
-> model and remains a compatibility target for future Datalens-native work.
+> model and remains a compatibility target for the Datalens-backed Rust indexer.
 
 This document explains what each entity in
 `apps/indexer/reference/schema.graphql` represents, how it is populated, and which

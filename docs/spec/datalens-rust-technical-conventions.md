@@ -1,7 +1,7 @@
 # Datalens Rust Technical Conventions
 
 > Purpose: defines the required Rust conventions for the Datalens-native DeGov
-> indexer before implementation starts. Read this before adding Rust indexer
+> indexer. Read this before adding Rust indexer
 > crates, ChainTool code, projection code, Datalens client wrappers, repository
 > code, or reconcile workers. This document does not describe the historical
 > SQD/Subsquid runtime.

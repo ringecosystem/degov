@@ -33,7 +33,7 @@ assert.match(packageConfig.scripts["indexer:worker"], /degov-datalens-indexer .*
 assert.match(packageConfig.scripts["indexer:graphql"], /degov-datalens-indexer .*graphql/);
 assert.match(packageConfig.scripts["indexer:migrate"], /degov-datalens-indexer .*migrate/);
 
-function composeConfig(args = [], { envFile = true } = {}) {
+function composeConfig(args = [], { envFile = true, env = {} } = {}) {
   const composeArgs = ["compose"];
   if (envFile) {
     composeArgs.push("--env-file", ".env.example");
@@ -46,6 +46,7 @@ function composeConfig(args = [], { envFile = true } = {}) {
     {
       cwd: repositoryRoot,
       encoding: "utf8",
+      env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -56,6 +57,9 @@ function composeConfig(args = [], { envFile = true } = {}) {
 const defaultComposeWithoutEnvFile = composeConfig([], { envFile: false });
 const defaultCompose = composeConfig();
 const indexerCompose = composeConfig(["--profile", "indexer"]);
+const customIndexerCompose = composeConfig(["--profile", "indexer"], {
+  env: { DEGOV_INDEXER_CONFIG_SOURCE: "./apps/indexer/indexer.example.yml" },
+});
 const defaultServicesWithoutEnvFile = defaultComposeWithoutEnvFile.services ?? {};
 const defaultServices = defaultCompose.services ?? {};
 const indexerServices = indexerCompose.services ?? {};
@@ -84,8 +88,8 @@ assert.match(
 );
 assert.match(
   composeYaml,
-  /DEGOV_INDEXER_CONFIG_FILE: \$\{DEGOV_INDEXER_CONFIG_FILE:-\/app\/indexer\.yml\}/,
-  "compose must pass the config file path into indexer workloads",
+  /DEGOV_INDEXER_CONFIG_FILE: \/app\/indexer\.yml/,
+  "compose must use the mounted config path inside indexer workloads",
 );
 assert.match(
   composeYaml,
@@ -94,8 +98,18 @@ assert.match(
 );
 assert.match(
   composeYaml,
-  /\.\/apps\/indexer\/indexer\.example\.yml:\/app\/indexer\.yml:ro/,
-  "compose must mount the config-file based multi-chain contract sets",
+  /\$\{DEGOV_INDEXER_CONFIG_SOURCE:-\.\/apps\/indexer\/indexer\.example\.yml\}:\/app\/indexer\.yml:ro/,
+  "compose must mount the selected host config at the container config path",
+);
+assert.deepEqual(
+  defaultServices.postgres?.healthcheck?.test,
+  ["CMD-SHELL", "pg_isready -U postgres -d indexer"],
+  "compose must wait for the initialized indexer database",
+);
+assert.equal(
+  indexerServices["indexer-migrate"]?.depends_on?.postgres?.condition,
+  "service_healthy",
+  "the migration job must wait for the initialized indexer database",
 );
 assert.equal(
   defaultServicesWithoutEnvFile.web?.depends_on?.["indexer-graphql"],
@@ -122,6 +136,35 @@ assert.equal(
   "graphql",
   "indexer profile must include the GraphQL service entrypoint",
 );
+for (const serviceName of ["indexer", "indexer-graphql", "onchain-worker"]) {
+  assert.equal(
+    indexerServices[serviceName]?.depends_on?.["indexer-migrate"]?.condition,
+    "service_completed_successfully",
+    `${serviceName} must wait for the explicit migration job`,
+  );
+}
+for (const serviceName of ["indexer", "onchain-worker"]) {
+  assert.equal(
+    indexerServices[serviceName]?.environment?.DEGOV_INDEXER_CONFIG_FILE,
+    "/app/indexer.yml",
+    `${serviceName} must load the mounted container config path`,
+  );
+  assert.equal(
+    indexerServices[serviceName]?.volumes?.[0]?.target,
+    "/app/indexer.yml",
+    `${serviceName} must mount its config at the configured container path`,
+  );
+  assert.match(
+    indexerServices[serviceName]?.volumes?.[0]?.source ?? "",
+    /\/apps\/indexer\/indexer\.yml$/,
+    `${serviceName} must use the user config selected by .env.example`,
+  );
+  assert.match(
+    customIndexerCompose.services?.[serviceName]?.volumes?.[0]?.source ?? "",
+    /\/apps\/indexer\/indexer\.example\.yml$/,
+    `${serviceName} must honor the host config source override`,
+  );
+}
 assert.equal(
   indexerServices["web-local-indexer"]?.depends_on?.["indexer-graphql"]?.required,
   true,
@@ -170,7 +213,8 @@ assert.doesNotMatch(
 );
 
 assert.match(envExample, /DATALENS_ENDPOINT=/);
-assert.match(envExample, /DEGOV_INDEXER_CONFIG_FILE=apps\/indexer\/indexer\.example\.yml/);
+assert.match(envExample, /DEGOV_INDEXER_CONFIG_SOURCE=\.\/apps\/indexer\/indexer\.yml/);
+assert.match(envExample, /# DEGOV_INDEXER_CONFIG_FILE=apps\/indexer\/indexer\.yml/);
 assert.match(envExample, /DEGOV_INDEXER_CONTRACT_SET_MODE=all/);
 assert.match(envExample, /^DATALENS_CHAINS_JSON=$/m);
 assert.match(envExample, /DEGOV_INDEXER_DATABASE_URL=/);

@@ -76,25 +76,24 @@ Run the checks in this order so the failing layer is clear:
 | DB/migration readiness | Available now. | Migrations apply and expected Datalens-native tables exist. | DeGov database URL, credentials, migration, or schema drift. |
 | GraphQL and web smoke | Available now. | GraphQL responds; delegates/proposals pages load; synced percentage is plausible when data exists. | API compatibility, web/API config, or stale DB view. |
 | Runtime readiness | Available now. | `run_indexer`, `run_worker`, and GraphQL packaging checks stay alive or report only config/readiness errors. | Process config, secret mounts, service readiness, or packaging. |
-| Active chunk processing | Available after projection packages are implemented. | `processed_height` advances toward `target_height`; chunk processing and commit logs appear. | DeGov query planning, decode/projection, DB transaction, or checkpoint writes. |
-| Row-family counters | Available after projection packages are implemented. | Proposal, vote, delegate, contributor, and `data_metric` totals are non-empty for an active DAO. | Decode/projection or idempotent writes. |
-| Checkpoint commits | Available after projection packages are implemented. | Checkpoint advancement occurs only with committed projection writes. | DB transaction or checkpoint contract. |
+| Active chunk processing | Available now. | `processed_height` advances toward `target_height`; chunk processing and commit logs appear. | DeGov query planning, decode/projection, DB transaction, or checkpoint writes. |
+| Row-family counters | Available now. | Proposal, vote, delegate, contributor, and `data_metric` totals are non-empty for an active DAO. | Decode/projection or idempotent writes. |
+| Checkpoint commits | Available now. | Checkpoint advancement occurs only with committed projection writes. | DB transaction or checkpoint contract. |
 | Onchain refresh queue draining | Available now when the worker is enabled with an RPC URL. | Pending work drains; failed and stale locked rows stay bounded. | ChainTool/RPC, onchain refresh worker, or lock recovery. |
-| Tally/onchain audit | Run after projection and worker packages are implemented and basic health passes. | Sampled proposal and power values agree with direct reads or have classified findings. | Business correctness after basic health passes. |
+| Tally/onchain audit | Available after basic health passes and, for power checks, worker catch-up. | Sampled proposal and power values agree with direct reads or have classified findings. | Business correctness after basic health passes. |
 
 ## Current Package Boundary
 
-HBX-264 documents observability while the checked-in DeGov indexer is still at
-the packaging/readiness boundary:
+The checked-in DeGov indexer provides the full runtime boundary:
 
 - `run_indexer` loads Datalens and database configuration, verifies Datalens
-  native GraphQL readiness, logs the configured chain/dataset/contracts, and
-  keeps the service alive.
+  native GraphQL readiness, applies migrations, and processes configured
+  contract-set ranges with transactional projection and checkpoint writes.
 - `run_worker` checks `DEGOV_INDEXER_DATABASE_URL` and
   `DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED`. When enabled, it also requires
   `DEGOV_ONCHAIN_REFRESH_RPC_URL` and drains `onchain_refresh_task`; when
-  disabled, it keeps the service alive for packaging/readiness checks.
-- `graphql` checks `DEGOV_INDEXER_GRAPHQL_ENDPOINT` packaging/configuration.
+  disabled, it keeps the service alive and reports that state.
+- `graphql` applies migrations and serves the configured GraphQL paths.
 - `migrate` applies the Datalens-native Postgres schema.
 
 Do not classify queue draining as a runtime failure when the worker is disabled.
@@ -289,11 +288,10 @@ Expected signal: `indexer` verifies Datalens and processes configured ranges,
 `indexer:worker` logs disabled worker readiness and waits, and `indexer:graphql`
 logs the configured bind address, public endpoint, and served paths.
 
-## Future DeGov Indexer Health
+## DeGov Indexer Health
 
-This section is available after projection packages are implemented. With the
-current HBX-264 package, a stale checkpoint, missing chunk log, or empty row
-family can simply mean the runtime is still in placeholder readiness mode.
+A stale checkpoint, missing chunk log, or unexpectedly empty row family is a
+runtime, configuration, or data-coverage signal and should be investigated.
 
 Read checkpoint state for the workload:
 
@@ -422,9 +420,7 @@ the checkpoint has crossed blocks containing those events. Empty row families
 with advancing checkpoints usually mean query planning used the wrong address,
 topic set, chain, dataset, or start block.
 
-## Future Projection Sanity
-
-This section is available after projection packages are implemented.
+## Projection Sanity
 
 Check core projection counts:
 
@@ -697,9 +693,8 @@ business-correctness signals, not first-line service health checks.
 | Symptom | First checks | Likely domain | Action |
 | --- | --- | --- | --- |
 | Datalens auth failure | Native discovery returns 401/403 or application error. | Datalens auth. | Verify `DATALENS_APPLICATION`, token secret mount, token rotation, and application allowlist. Do not log the token. |
-| Empty Datalens rows and empty DeGov projections | Native query over a known event range returns no rows; after projection packages are implemented, checkpoint advances and row family counts stay zero. | DeGov query planning or Datalens chain/dataset config. | Confirm chain id/name, dataset `evm.logs`, governor/token/timelock addresses, topic filters, start block, and finality mode. Test a small known event range. |
-| Empty processor logs in current package | `run_indexer` verified Datalens and is waiting; no chunk logs are emitted. | Placeholder readiness boundary. | This is expected before projection packages are implemented. Do not restart as a runtime failure solely because chunk logs are absent. |
-| Empty processor logs after projection package lands | No chunk logs for the DAO and checkpoint is stale. | Runtime startup or workload config. | Check pod readiness, process args, `DEGOV_CONFIG_PATH`, DAO enabled flag, database connectivity, and whether the worker is watching the expected namespace/config. |
+| Empty Datalens rows and empty DeGov projections | Native query over a known event range returns no rows; checkpoint advances and row family counts stay zero. | DeGov query planning or Datalens chain/dataset config. | Confirm chain id/name, dataset `evm.logs`, governor/token/timelock addresses, topic filters, start block, and finality mode. Test a small known event range. |
+| Empty processor logs | No chunk logs for the DAO and checkpoint is stale. | Runtime startup or workload config. | Check pod readiness, process args, `DEGOV_INDEXER_CONFIG_FILE`, contract-set selection, database connectivity, and Datalens readiness. |
 | Decode mismatch | Logs show `DAO event decode error`; raw Datalens rows exist. | Decode/projection boundary. | Confirm ABI, event topic, token standard, timelock address, and whether the event is unsupported for the DAO compatibility policy. Unsupported events must be durable and auditable if skipped. |
 | Timestamp unit error | Proposals have implausible `vote_start_timestamp`, `vote_end_timestamp`, or page dates. | Decode/projection. | Compare raw `block_timestamp` values with expected seconds. Millisecond values are usually 1000x too large; second values interpreted as milliseconds are usually near 1970. |
 | Checkpoint stuck | `processing` chunk log repeats or `processed_height` does not advance. | Datalens query, DB transaction, decode/projection, or checkpoint. | Match the last processing log to the next error. If transaction failed, inspect DB errors and confirm checkpoint is advanced only inside the write transaction. |
@@ -718,9 +713,8 @@ business-correctness signals, not first-line service health checks.
   and refresh queue draining against the feature flags and runtime processes
   that are actually enabled for the DAO.
 - Checkpoint advancement without matching projection rows is a serious
-  correctness issue after projection packages are implemented. The batch
-  contract requires projection writes and checkpoint advancement in one
-  transaction.
+  correctness issue. The batch contract requires projection writes and
+  checkpoint advancement in one transaction.
 - A replay may be healthy with zero onchain power until the refresh worker is
   enabled, has a working RPC URL, and catches up with pending
   `onchain_refresh_task` rows. Confirm lag before restarting workers.

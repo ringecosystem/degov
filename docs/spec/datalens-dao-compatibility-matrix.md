@@ -160,5 +160,5 @@ not remain in active staging or production runs as silently skipped workloads.
 - accepting documented fallbacks as degraded with explicit selected vote-read
   methods.
 
-Future Rust implementation issues must preserve these behaviors in typed Rust
-preflight and runtime errors before replacing the placeholder script.
+Rust compatibility checks must preserve these behaviors in typed preflight and
+runtime errors.
