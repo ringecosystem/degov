@@ -27,3 +27,15 @@ test("DAO homepage uses the established product UI without a duplicate summary",
   assert.match(headerSource, /\{config\?\.name\}/);
   assert.doesNotMatch(summarySource, /DaoPublicSummary|Registry source/);
 });
+
+test("proposal detail keeps its crawler fallback out of the interactive UI", () => {
+  const pageSource = readSource("src/app/proposal/[id]/page.tsx");
+
+  assert.match(
+    pageSource,
+    /<noscript>[\s\S]*<ProposalDetailPublicSummary[\s\S]*<\/noscript>/
+  );
+  assert.match(pageSource, /<ProposalDetailClient \/>/);
+  assert.match(pageSource, /buildProposalWebPageJsonLd\(config, proposal\)/);
+  assert.match(pageSource, /type="application\/ld\+json"/);
+});
