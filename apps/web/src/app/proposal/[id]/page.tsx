@@ -30,11 +30,13 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
           dangerouslySetInnerHTML={{ __html: proposalJsonLd }}
         />
       ) : null}
-      <ProposalDetailPublicSummary
-        config={config}
-        proposal={proposal}
-        failed={failed}
-      />
+      <noscript>
+        <ProposalDetailPublicSummary
+          config={config}
+          proposal={proposal}
+          failed={failed}
+        />
+      </noscript>
       <ProposalDetailClient />
     </div>
   );
