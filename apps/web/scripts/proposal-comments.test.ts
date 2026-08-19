@@ -27,6 +27,26 @@ test("proposal comments require both API configuration and DAO feature", () => {
   );
 });
 
+test("local DAO config can still use configured Square APIs", () => {
+  const remoteApi = readFileSync(
+    new URL("../src/utils/remote-api.ts", import.meta.url),
+    "utf8"
+  );
+  const clientCheck = remoteApi.match(
+    /export const isDegovApiConfiguredClient = \(\) => \{([\s\S]*?)\n\};/
+  )?.[1];
+  const restApi = remoteApi.match(
+    /export const degovRestApi = \(\): string \| undefined => \{([\s\S]*?)\n\};/
+  )?.[1];
+
+  assert.ok(clientCheck);
+  assert.ok(restApi);
+  assert.match(clientCheck, /NEXT_PUBLIC_DEGOV_API/);
+  assert.match(restApi, /NEXT_PUBLIC_DEGOV_API/);
+  assert.doesNotMatch(clientCheck, /isLocalConfigEnabledClient/);
+  assert.doesNotMatch(restApi, /isLocalConfigEnabled/);
+});
+
 test("discussion stays distinct from on-chain vote reasons", () => {
   const tabs = readFileSync(
     new URL("../src/app/proposal/[id]/tabs.tsx", import.meta.url),
