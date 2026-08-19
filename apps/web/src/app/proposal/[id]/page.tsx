@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { buildProposalWebPageJsonLd } from "@/lib/structured-data";
 
-import { ProposalDetailPublicSummary } from "../../_components/public-route-summary";
+import { proposalDetailPublicSummaryHtml } from "../../_components/public-route-summary";
 import { getActiveDaoConfig, getPublicProposalDetail } from "../../_server/public-seo";
 
 import { ProposalDetailClient } from "./proposal-detail-client";
@@ -21,6 +21,7 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
   }
 
   const proposalJsonLd = buildProposalWebPageJsonLd(config, proposal);
+  const proposalSummaryHtml = proposalDetailPublicSummaryHtml({ config, proposal, failed });
 
   return (
     <div className="flex flex-col gap-[20px]">
@@ -30,13 +31,7 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
           dangerouslySetInnerHTML={{ __html: proposalJsonLd }}
         />
       ) : null}
-      <noscript>
-        <ProposalDetailPublicSummary
-          config={config}
-          proposal={proposal}
-          failed={failed}
-        />
-      </noscript>
+      <noscript dangerouslySetInnerHTML={{ __html: proposalSummaryHtml }} />
       <ProposalDetailClient />
     </div>
   );
