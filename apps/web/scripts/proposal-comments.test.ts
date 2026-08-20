@@ -134,6 +134,23 @@ test("proposal comment trees degrade safely for missing parents and cycles", () 
   );
 });
 
+test("proposal comment trees handle large chains and cycles in linear passes", () => {
+  const size = 20_000;
+  const chain = Array.from({ length: size }, (_, index) =>
+    comment(String(index), index === 0 ? undefined : String(index - 1))
+  );
+  const threadedChain = threadProposalComments(chain);
+  assert.equal(threadedChain.length, size);
+  assert.equal(threadedChain.at(-1)?.depth, size - 1);
+
+  const cycle = Array.from({ length: size }, (_, index) =>
+    comment(String(index), String((index + 1) % size))
+  );
+  const threadedCycle = threadProposalComments(cycle);
+  assert.equal(threadedCycle.length, size);
+  assert.ok(threadedCycle.every(({ depth }) => depth === 0));
+});
+
 test("remote GraphQL authentication is scoped to every request", () => {
   const client = readFileSync(
     new URL("../src/services/graphql/remote-client.ts", import.meta.url),

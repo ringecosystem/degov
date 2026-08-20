@@ -6,20 +6,40 @@ export interface ThreadedProposalComment {
   replyTarget?: ProposalComment;
 }
 
-function hasInvalidParentChain(
-  comment: ProposalComment,
+function invalidParentChains(
   commentsById: Map<string, ProposalComment>
 ) {
-  const visited = new Set([comment.id]);
-  let parentId = comment.replyToId;
+  const invalidById = new Map<string, boolean>();
 
-  while (parentId) {
-    if (visited.has(parentId)) return true;
-    visited.add(parentId);
-    parentId = commentsById.get(parentId)?.replyToId;
+  for (const comment of commentsById.values()) {
+    if (invalidById.has(comment.id)) continue;
+
+    const path: ProposalComment[] = [];
+    const pathIds = new Set<string>();
+    let current: ProposalComment | undefined = comment;
+    let invalid = false;
+
+    while (current) {
+      const resolved = invalidById.get(current.id);
+      if (resolved !== undefined) {
+        invalid = resolved;
+        break;
+      }
+      if (pathIds.has(current.id)) {
+        invalid = true;
+        break;
+      }
+      path.push(current);
+      pathIds.add(current.id);
+      current = current.replyToId
+        ? commentsById.get(current.replyToId)
+        : undefined;
+    }
+
+    for (const item of path) invalidById.set(item.id, invalid);
   }
 
-  return false;
+  return invalidById;
 }
 
 export function threadProposalComments(comments: ProposalComment[]) {
@@ -27,6 +47,7 @@ export function threadProposalComments(comments: ProposalComment[]) {
   for (const comment of comments) {
     if (!commentsById.has(comment.id)) commentsById.set(comment.id, comment);
   }
+  const invalidById = invalidParentChains(commentsById);
 
   const childrenById = new Map<string, ProposalComment[]>();
   const roots: ProposalComment[] = [];
@@ -35,7 +56,7 @@ export function threadProposalComments(comments: ProposalComment[]) {
     const parent = comment.replyToId
       ? commentsById.get(comment.replyToId)
       : undefined;
-    if (!parent || hasInvalidParentChain(comment, commentsById)) {
+    if (!parent || invalidById.get(comment.id)) {
       roots.push(comment);
       continue;
     }
