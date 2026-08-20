@@ -293,6 +293,7 @@ pub struct IndexerRuntimeConfig {
     pub poll_interval: Duration,
     pub run_once: bool,
     pub max_chunks_per_run: Option<u64>,
+    pub max_run_duration: Option<Duration>,
     pub database_max_connections: u32,
     pub checkpoint_stream_id: String,
     pub data_source_version: String,
@@ -396,6 +397,7 @@ pub struct IndexerContractSetRuntimeConfig {
     pub progress_refresh_lag_blocks: i64,
     pub adaptive_chunk_sizer: AdaptiveChunkSizerRuntimeConfig,
     pub max_chunks_per_run: Option<u64>,
+    pub max_run_duration: Option<Duration>,
     pub onchain_refresh_tick: OnchainRefreshTickConfig,
     pub onchain_refresh_deferred_drain_enabled: bool,
     pub onchain_refresh_deferred_drain_batch_size: usize,
@@ -494,6 +496,11 @@ impl IndexerRuntimeConfig {
             optional_env_u64("DEGOV_INDEXER_POLL_INTERVAL_MS")?.unwrap_or(10_000),
         );
         let run_once = optional_env_bool("DEGOV_INDEXER_RUN_ONCE")?.unwrap_or(false);
+        let max_run_duration_ms = optional_env_u64("DEGOV_INDEXER_MAX_RUN_DURATION_MS")?;
+        if max_run_duration_ms == Some(0) {
+            bail!("DEGOV_INDEXER_MAX_RUN_DURATION_MS must be greater than zero");
+        }
+        let max_run_duration = max_run_duration_ms.map(Duration::from_millis);
 
         let onchain_refresh_tick = load_onchain_refresh_tick_config()?;
         let onchain_refresh_deferred_drain_enabled = load_onchain_refresh_deferred_drain_enabled(
@@ -534,6 +541,7 @@ impl IndexerRuntimeConfig {
             poll_interval,
             run_once,
             max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
+            max_run_duration,
             database_max_connections,
         })
     }
@@ -597,6 +605,7 @@ impl IndexerRuntimeConfig {
             progress_refresh_lag_blocks: self.progress_refresh_lag_blocks,
             adaptive_chunk_sizer: self.adaptive_chunk_sizer,
             max_chunks_per_run: self.max_chunks_per_run,
+            max_run_duration: self.max_run_duration,
             onchain_refresh_tick: self.onchain_refresh_tick.clone(),
             onchain_refresh_deferred_drain_enabled: self.onchain_refresh_deferred_drain_enabled,
             onchain_refresh_deferred_drain_batch_size: self

@@ -657,6 +657,7 @@ pub struct IndexerRunner<R, S, D = DaoEventDecoder> {
     store: S,
     decoder: D,
     shutdown_after_chunks: Option<u64>,
+    shutdown_after_duration: Option<Duration>,
     onchain_refresh_tick: Option<Box<dyn IndexerOnchainRefreshTick>>,
     chain_tool: Option<Box<dyn ChainTool + Send + Sync>>,
 }
@@ -733,6 +734,7 @@ where
             store,
             decoder,
             shutdown_after_chunks: None,
+            shutdown_after_duration: None,
             onchain_refresh_tick: None,
             chain_tool: None,
         }
@@ -748,6 +750,10 @@ where
 
     pub fn request_shutdown_after_chunks(&mut self, chunks: u64) {
         self.shutdown_after_chunks = Some(chunks);
+    }
+
+    pub fn request_shutdown_after_duration(&mut self, duration: Duration) {
+        self.shutdown_after_duration = Some(duration);
     }
 
     pub fn with_onchain_refresh_tick(mut self, tick: Box<dyn IndexerOnchainRefreshTick>) -> Self {
@@ -768,6 +774,7 @@ where
             .options
             .safe_height
             .map_or(target_height, |safe_height| safe_height.min(target_height));
+        let pass_started_at = Instant::now();
         let mut progress_rate = ProgressRateEstimator::default();
         let mut chunks_processed = 0;
         let mut provider_limit_count_since_summary = 0;
@@ -806,6 +813,9 @@ where
             if self
                 .shutdown_after_chunks
                 .is_some_and(|limit| chunks_processed >= limit)
+                || self
+                    .shutdown_after_duration
+                    .is_some_and(|limit| chunks_processed > 0 && pass_started_at.elapsed() >= limit)
             {
                 return Ok(IndexerRunnerReport {
                     chunks_processed,

@@ -1056,6 +1056,25 @@ fn test_runner_stops_gracefully_between_chunks() {
 }
 
 #[test]
+fn test_runner_duration_shutdown_waits_until_after_successful_chunk() {
+    let mut runner = runner(
+        vec![vec![row(1, 0, 0)], vec![row(2, 0, 0)]],
+        ScriptedDecoder,
+    );
+    runner.request_shutdown_after_duration(Duration::ZERO);
+
+    let report = runner.run_to_target(2).expect("runner stops cleanly");
+
+    assert_eq!(report.chunks_processed, 1);
+    assert!(report.shutdown_requested);
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        2
+    );
+    assert_eq!(runner.store().commit_count(), 1);
+}
+
+#[test]
 fn test_runner_decodes_distinct_log_addresses_with_matching_sources() {
     let attempts = Arc::new(Mutex::new(Vec::new()));
     let mut runner = runner_with_decoder(

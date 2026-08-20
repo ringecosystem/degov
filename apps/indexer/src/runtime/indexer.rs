@@ -1697,6 +1697,9 @@ async fn run_contract_set_pass(
         if let Some(chunks) = max_chunks_per_run {
             runner.request_shutdown_after_chunks(chunks);
         }
+        if let Some(duration) = runtime.max_run_duration {
+            runner.request_shutdown_after_duration(duration);
+        }
 
         let report = runner
             .run_to_target(runtime.target_height)
@@ -2928,6 +2931,7 @@ mod tests {
             poll_interval: Duration::from_millis(10),
             run_once: true,
             max_chunks_per_run: None,
+            max_run_duration: None,
             database_max_connections: 1,
             checkpoint_stream_id: "datalens-native".to_owned(),
             data_source_version: "datalens-v1".to_owned(),
@@ -3219,6 +3223,7 @@ mod tests {
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             max_chunks_per_run,
+            max_run_duration: None,
             onchain_refresh_tick: Default::default(),
             onchain_refresh_deferred_drain_enabled: false,
             onchain_refresh_deferred_drain_batch_size: 100,
@@ -3245,6 +3250,7 @@ mod tests {
             progress_refresh_lag_blocks: 100,
             adaptive_chunk_sizer: Default::default(),
             max_chunks_per_run: None,
+            max_run_duration: None,
             onchain_refresh_tick: Default::default(),
             onchain_refresh_deferred_drain_enabled: false,
             onchain_refresh_deferred_drain_batch_size: 100,
@@ -4067,6 +4073,7 @@ mod tests {
             poll_interval: Duration::from_millis(10),
             run_once: true,
             max_chunks_per_run: None,
+            max_run_duration: None,
             database_max_connections: 1,
             checkpoint_stream_id: "datalens-native".to_owned(),
             data_source_version: "datalens-v1".to_owned(),
