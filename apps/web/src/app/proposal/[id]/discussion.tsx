@@ -13,13 +13,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEnsureAuth } from "@/hooks/useEnsureAuth";
 import { useProposalComments } from "@/hooks/useProposalComments";
 import type { ProposalComment } from "@/services/graphql/types/proposal-comments";
+import { formatShortAddress } from "@/utils/address";
 import { formatTimeAgo } from "@/utils/date";
 import {
   extractErrorMessage,
   isAuthenticationRequired,
 } from "@/utils/graphql-error-handler";
 
+import { threadProposalComments } from "./comment-tree";
+
 const MAX_COMMENT_LENGTH = 10_000;
+const MAX_VISUAL_REPLY_DEPTH = 3;
+const replyIndentClasses = [
+  "",
+  "ms-[18px] border-s border-border/40 ps-[14px] sm:ms-[30px] sm:ps-[20px]",
+  "ms-[32px] border-s border-border/40 ps-[14px] sm:ms-[50px] sm:ps-[20px]",
+  "ms-[46px] border-s border-border/40 ps-[14px] sm:ms-[70px] sm:ps-[20px]",
+];
 
 function MarkdownComment({ body }: { body: string }) {
   const html = useMemo(
@@ -37,7 +47,8 @@ function MarkdownComment({ body }: { body: string }) {
 
 interface CommentRowProps {
   comment: ProposalComment;
-  isReply?: boolean;
+  depth?: number;
+  replyTarget?: ProposalComment;
   currentAddress?: string;
   isPending: boolean;
   editingId: string | null;
@@ -57,7 +68,8 @@ interface CommentRowProps {
 
 function CommentRow({
   comment,
-  isReply = false,
+  depth = 0,
+  replyTarget,
   currentAddress,
   isPending,
   editingId,
@@ -83,14 +95,20 @@ function CommentRow({
 
   return (
     <article
-      className={
-        isReply
-          ? "ml-[22px] border-l border-border/40 pl-[18px] sm:ml-[34px] sm:pl-[22px]"
-          : ""
-      }
+      className={replyIndentClasses[Math.min(depth, MAX_VISUAL_REPLY_DEPTH)]}
     >
       <div className="flex items-start gap-[12px] py-[18px]">
         <div className="min-w-0 flex-1">
+          {depth > 1 && replyTarget && (
+            <p
+              className="mb-[7px] text-[12px] text-muted-foreground break-words"
+              title={replyTarget.authorAddress}
+            >
+              {t("replyingTo", {
+                address: formatShortAddress(replyTarget.authorAddress),
+              })}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-x-[10px] gap-y-[4px]">
             <AddressWithAvatar
               address={comment.authorAddress}
@@ -138,17 +156,15 @@ function CommentRow({
 
           {!isDeleted && !isEditing && (
             <div className="mt-[10px] flex items-center gap-[4px]">
-              {!isReply && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 px-2 text-muted-foreground"
-                  onClick={() => onReplyStart(comment.id)}
-                >
-                  <Reply />
-                  {t("reply")}
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 px-2 text-muted-foreground"
+                onClick={() => onReplyStart(comment.id)}
+              >
+                <Reply />
+                {t("reply")}
+              </Button>
               {isAuthor && (
                 <>
                   <Button
@@ -231,23 +247,10 @@ export function Discussion({
     () => query.data?.pages.flatMap((page) => page.items) ?? [],
     [query.data]
   );
-  const roots = useMemo(() => {
-    const ids = new Set(comments.map((comment) => comment.id));
-    return comments.filter(
-      (comment) => !comment.replyToId || !ids.has(comment.replyToId)
-    );
-  }, [comments]);
-  const replies = useMemo(() => {
-    const grouped = new Map<string, ProposalComment[]>();
-    for (const comment of comments) {
-      if (!comment.replyToId) continue;
-      grouped.set(comment.replyToId, [
-        ...(grouped.get(comment.replyToId) ?? []),
-        comment,
-      ]);
-    }
-    return grouped;
-  }, [comments]);
+  const threadedComments = useMemo(
+    () => threadProposalComments(comments),
+    [comments]
+  );
 
   const isPending =
     isAuthenticating || create.isPending || update.isPending || remove.isPending;
@@ -424,7 +427,7 @@ export function Discussion({
         )}
       </div>
 
-      {roots.length === 0 ? (
+      {threadedComments.length === 0 ? (
         <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
           <MessageSquare className="size-7 text-muted-foreground" />
           <p className="mt-[12px] font-semibold">{t("empty")}</p>
@@ -434,18 +437,14 @@ export function Discussion({
         </div>
       ) : (
         <div className="divide-y divide-border/30">
-          {roots.map((comment) => (
-            <div key={comment.id}>
-              <CommentRow comment={comment} {...sharedRowProps} />
-              {(replies.get(comment.id) ?? []).map((reply) => (
-                <CommentRow
-                  key={reply.id}
-                  comment={reply}
-                  isReply
-                  {...sharedRowProps}
-                />
-              ))}
-            </div>
+          {threadedComments.map(({ comment, depth, replyTarget }) => (
+            <CommentRow
+              key={comment.id}
+              comment={comment}
+              depth={depth}
+              replyTarget={replyTarget}
+              {...sharedRowProps}
+            />
           ))}
         </div>
       )}

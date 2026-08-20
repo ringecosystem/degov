@@ -27,6 +27,7 @@
     "markdownSupported": "Markdown supported",
     "comment": "Comment",
     "reply": "Reply",
+    "replyingTo": "Replying to {address}",
     "edit": "Edit",
     "delete": "Delete",
     "save": "Save",
