@@ -60,10 +60,12 @@ export function threadProposalComments(comments: ProposalComment[]) {
       roots.push(comment);
       continue;
     }
-    childrenById.set(parent.id, [
-      ...(childrenById.get(parent.id) ?? []),
-      comment,
-    ]);
+    const children = childrenById.get(parent.id);
+    if (children) {
+      children.push(comment);
+    } else {
+      childrenById.set(parent.id, [comment]);
+    }
   }
 
   const threaded: ThreadedProposalComment[] = [];

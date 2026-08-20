@@ -149,6 +149,16 @@ test("proposal comment trees handle large chains and cycles in linear passes", (
   const threadedCycle = threadProposalComments(cycle);
   assert.equal(threadedCycle.length, size);
   assert.ok(threadedCycle.every(({ depth }) => depth === 0));
+
+  const siblings = [
+    comment("root"),
+    ...Array.from({ length: size }, (_, index) =>
+      comment(String(index), "root")
+    ),
+  ];
+  const threadedSiblings = threadProposalComments(siblings);
+  assert.equal(threadedSiblings.length, size + 1);
+  assert.equal(threadedSiblings.at(-1)?.depth, 1);
 });
 
 test("remote GraphQL authentication is scoped to every request", () => {
