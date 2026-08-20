@@ -83,8 +83,13 @@ assert.match(
 );
 assert.match(
   composeYaml,
-  /DEGOV_INDEXER_GRAPHQL_ENDPOINT: \$\{DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT:-http:\/\/0\.0\.0\.0:4350\/graphql\}/,
-  "compose GraphQL service must bind on the GraphQL path",
+  /DEGOV_INDEXER_GRAPHQL_ENDPOINT: \$\{DEGOV_INDEXER_GRAPHQL_ENDPOINT:-http:\/\/0\.0\.0\.0:4350\/graphql\}/,
+  "compose GraphQL service must accept the public endpoint contract",
+);
+assert.match(
+  composeYaml,
+  /DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS: \$\{DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS:-0\.0\.0\.0:4350\}/,
+  "compose GraphQL service must accept the bind address contract",
 );
 assert.match(
   composeYaml,

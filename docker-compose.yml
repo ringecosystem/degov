@@ -118,7 +118,8 @@ services:
       - "${DEGOV_INDEXER_PORT:-4350}:4350"
     environment:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
-      DEGOV_INDEXER_GRAPHQL_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT:-http://0.0.0.0:4350/graphql}
+      DEGOV_INDEXER_GRAPHQL_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_ENDPOINT:-http://0.0.0.0:4350/graphql}
+      DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS: ${DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS:-0.0.0.0:4350}
 
   web:
     image: degov-web
