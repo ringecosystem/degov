@@ -1012,6 +1012,65 @@ fn test_indexer_runtime_config_rejects_enabled_onchain_refresh_tick_zero_run_bud
 }
 
 #[test]
+fn test_indexer_runtime_config_accepts_max_run_duration() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_MAX_RUN_DURATION_MS", Some("120000")),
+        ],
+        || {
+            let config = IndexerRuntimeConfig::from_env().expect("runtime config parses");
+
+            assert_eq!(
+                config.max_run_duration,
+                Some(Duration::from_millis(120_000))
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_rejects_zero_max_run_duration() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_MAX_RUN_DURATION_MS", Some("0")),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("zero run duration is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_MAX_RUN_DURATION_MS")
+            );
+        },
+    );
+}
+
+#[test]
+fn test_indexer_runtime_config_rejects_zero_max_chunks_per_run() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN", Some("0")),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("zero chunk budget is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")
+            );
+        },
+    );
+}
+
+#[test]
 fn test_datalens_retry_config_maps_query_max_attempts_to_sdk_retry_attempts() {
     let retry_config = datalens_retry_config(5);
 
@@ -1073,6 +1132,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         poll_interval: Duration::from_secs(10),
         run_once: true,
         max_chunks_per_run: None,
+        max_run_duration: Some(Duration::from_secs(120)),
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
         onchain_refresh_deferred_drain_enabled: false,
@@ -1097,6 +1157,7 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
 
     assert_eq!(planned.dao_code, "lisk-dao");
     assert_eq!(planned.start_block, 568752);
+    assert_eq!(planned.max_run_duration, Some(Duration::from_secs(120)));
     assert!(!planned.provisional.enabled);
     assert_eq!(
         planned.provisional.finality,
@@ -1162,6 +1223,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         poll_interval: Duration::from_secs(10),
         run_once: true,
         max_chunks_per_run: None,
+        max_run_duration: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
         onchain_refresh_deferred_drain_enabled: false,
@@ -1206,6 +1268,7 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         poll_interval: Duration::from_secs(10),
         run_once: true,
         max_chunks_per_run: None,
+        max_run_duration: None,
         database_max_connections: 1,
         onchain_refresh_tick: OnchainRefreshTickConfig::default(),
         onchain_refresh_deferred_drain_enabled: false,
