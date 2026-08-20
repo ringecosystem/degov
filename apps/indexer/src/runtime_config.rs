@@ -501,6 +501,10 @@ impl IndexerRuntimeConfig {
             bail!("DEGOV_INDEXER_MAX_RUN_DURATION_MS must be greater than zero");
         }
         let max_run_duration = max_run_duration_ms.map(Duration::from_millis);
+        let max_chunks_per_run = optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?;
+        if max_chunks_per_run == Some(0) {
+            bail!("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN must be greater than zero");
+        }
 
         let onchain_refresh_tick = load_onchain_refresh_tick_config()?;
         let onchain_refresh_deferred_drain_enabled = load_onchain_refresh_deferred_drain_enabled(
@@ -540,7 +544,7 @@ impl IndexerRuntimeConfig {
             realtime: RealtimeRuntimeConfig::from_env()?,
             poll_interval,
             run_once,
-            max_chunks_per_run: optional_env_u64("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")?,
+            max_chunks_per_run,
             max_run_duration,
             database_max_connections,
         })

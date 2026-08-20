@@ -1051,6 +1051,26 @@ fn test_indexer_runtime_config_rejects_zero_max_run_duration() {
 }
 
 #[test]
+fn test_indexer_runtime_config_rejects_zero_max_chunks_per_run() {
+    with_env_vars!(
+        [
+            ("DEGOV_INDEXER_DAO_CODE", Some("demo-dao")),
+            ("DEGOV_INDEXER_TARGET_HEIGHT", Some("123")),
+            ("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN", Some("0")),
+        ],
+        || {
+            let error = IndexerRuntimeConfig::from_env().expect_err("zero chunk budget is invalid");
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("DEGOV_INDEXER_MAX_CHUNKS_PER_RUN")
+            );
+        },
+    );
+}
+
+#[test]
 fn test_datalens_retry_config_maps_query_max_attempts_to_sdk_retry_attempts() {
     let retry_config = datalens_retry_config(5);
 
