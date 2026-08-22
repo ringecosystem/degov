@@ -60,6 +60,15 @@ const indexerCompose = composeConfig(["--profile", "indexer"]);
 const customIndexerCompose = composeConfig(["--profile", "indexer"], {
   env: { DEGOV_INDEXER_CONFIG_SOURCE: "./apps/indexer/indexer.example.yml" },
 });
+const rpcIndexerCompose = composeConfig(["--profile", "indexer"], {
+  env: {
+    ETHEREUM_RPC_URL: "https://ethereum.example/rpc",
+    LISK_RPC_URL: "https://lisk.example/rpc",
+    DARWINIA_RPC_URL: "https://darwinia.example/rpc",
+    BASE_RPC_URL: "https://base.example/rpc",
+    ARBITRUM_RPC_URL: "https://arbitrum.example/rpc",
+  },
+});
 const defaultServicesWithoutEnvFile = defaultComposeWithoutEnvFile.services ?? {};
 const defaultServices = defaultCompose.services ?? {};
 const indexerServices = indexerCompose.services ?? {};
@@ -168,6 +177,14 @@ for (const serviceName of ["indexer", "onchain-worker"]) {
     customIndexerCompose.services?.[serviceName]?.volumes?.[0]?.source ?? "",
     /\/apps\/indexer\/indexer\.example\.yml$/,
     `${serviceName} must honor the host config source override`,
+  );
+}
+for (const chainName of ["ETHEREUM", "LISK", "DARWINIA", "BASE", "ARBITRUM"]) {
+  const envName = `${chainName}_RPC_URL`;
+  assert.equal(
+    rpcIndexerCompose.services?.["onchain-worker"]?.environment?.[envName],
+    `https://${chainName.toLowerCase()}.example/rpc`,
+    `onchain-worker must receive ${envName} from the Compose environment`,
   );
 }
 assert.equal(

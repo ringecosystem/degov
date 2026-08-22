@@ -87,7 +87,9 @@ DEGOV_INDEXER_RUN_ONCE=false
 Leave `DEGOV_INDEXER_DAO_CODE` empty in normal `all` mode. Set it only as a
 temporary filter for a bounded debug run. If onchain refresh is enabled, each
 `rpc.chains.*.urlEnv` entry in `indexer.yml` must name a configured RPC secret,
-such as `DARWINIA_RPC_URL` or `LISK_RPC_URL`.
+such as `DARWINIA_RPC_URL` or `LISK_RPC_URL`. Compose forwards the chain RPC
+variables listed in `.env.example`; add a matching `onchain-worker.environment`
+entry when using a different `urlEnv` name.
 
 Also edit `degov.yml` for the web application's DAO identity, chain, contracts,
 and public indexer endpoint.
