@@ -5,9 +5,11 @@ this repository.
 
 ## Indexer
 
-The checked-in SQD/Subsquid indexer runtime has been removed while DeGov moves
-to a Datalens-native indexer. The documents below describe historical behavior
-or API/data-model reference material unless a newer document says otherwise.
+The SQD/Subsquid runtime has been replaced by the checked-in Rust
+Datalens-backed indexer. Start with the root
+[deployment guide](../README.md#datalens-backed-indexer-deployment); the
+documents below cover development, compatibility, migration, rollout, and
+operations in more detail.
 
 - [Datalens Rust technical conventions][datalens-rust-conventions]
 - [Datalens PostgreSQL schema ownership][datalens-postgres-schema]

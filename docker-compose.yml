@@ -10,13 +10,20 @@ services:
       - ./init-scripts/postgres:/docker-entrypoint-initdb.d
     ports:
       - "${DEGOV_DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d indexer"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
 
   indexer-migrate:
     image: degov-indexer
     profiles:
       - indexer
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     build:
       context: .
       dockerfile: docker/indexer.Dockerfile
@@ -29,16 +36,17 @@ services:
     profiles:
       - indexer
     depends_on:
-      - postgres
+      indexer-migrate:
+        condition: service_completed_successfully
     build:
       context: .
       dockerfile: docker/indexer.Dockerfile
     command: run
     volumes:
-      - ./apps/indexer/indexer.example.yml:/app/indexer.yml:ro
+      - ${DEGOV_INDEXER_CONFIG_SOURCE:-./apps/indexer/indexer.example.yml}:/app/indexer.yml:ro
     environment:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
-      DEGOV_INDEXER_CONFIG_FILE: ${DEGOV_INDEXER_CONFIG_FILE:-/app/indexer.yml}
+      DEGOV_INDEXER_CONFIG_FILE: /app/indexer.yml
       DEGOV_INDEXER_CONTRACT_SET_MODE: ${DEGOV_INDEXER_CONTRACT_SET_MODE:-all}
       DEGOV_INDEXER_DAO_CODE: ${DEGOV_INDEXER_DAO_CODE:-}
       DEGOV_INDEXER_TARGET_HEIGHT: ${DEGOV_INDEXER_TARGET_HEIGHT:-latest}
@@ -66,17 +74,23 @@ services:
     profiles:
       - indexer
     depends_on:
-      - postgres
+      indexer-migrate:
+        condition: service_completed_successfully
     build:
       context: .
       dockerfile: docker/indexer.Dockerfile
     command: worker
     volumes:
-      - ./apps/indexer/indexer.example.yml:/app/indexer.yml:ro
+      - ${DEGOV_INDEXER_CONFIG_SOURCE:-./apps/indexer/indexer.example.yml}:/app/indexer.yml:ro
     environment:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
-      DEGOV_INDEXER_CONFIG_FILE: ${DEGOV_INDEXER_CONFIG_FILE:-/app/indexer.yml}
+      DEGOV_INDEXER_CONFIG_FILE: /app/indexer.yml
       DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED: ${DEGOV_ONCHAIN_REFRESH_WORKER_ENABLED:-false}
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL:-}
+      LISK_RPC_URL: ${LISK_RPC_URL:-}
+      DARWINIA_RPC_URL: ${DARWINIA_RPC_URL:-}
+      BASE_RPC_URL: ${BASE_RPC_URL:-}
+      ARBITRUM_RPC_URL: ${ARBITRUM_RPC_URL:-}
       DEGOV_ONCHAIN_REFRESH_RPC_URL: ${DEGOV_ONCHAIN_REFRESH_RPC_URL:-}
       DEGOV_ONCHAIN_REFRESH_RUN_ONCE: ${DEGOV_ONCHAIN_REFRESH_RUN_ONCE:-false}
       DEGOV_ONCHAIN_REFRESH_BATCH_SIZE: ${DEGOV_ONCHAIN_REFRESH_BATCH_SIZE:-100}
@@ -99,7 +113,8 @@ services:
     profiles:
       - indexer
     depends_on:
-      - postgres
+      indexer-migrate:
+        condition: service_completed_successfully
     build:
       context: .
       dockerfile: docker/indexer.Dockerfile
@@ -108,12 +123,14 @@ services:
       - "${DEGOV_INDEXER_PORT:-4350}:4350"
     environment:
       DEGOV_INDEXER_DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/indexer
-      DEGOV_INDEXER_GRAPHQL_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_BIND_ENDPOINT:-http://0.0.0.0:4350/graphql}
+      DEGOV_INDEXER_GRAPHQL_ENDPOINT: ${DEGOV_INDEXER_GRAPHQL_ENDPOINT:-http://0.0.0.0:4350/graphql}
+      DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS: ${DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS:-0.0.0.0:4350}
 
   web:
     image: degov-web
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     build:
       context: .
       dockerfile: docker/web.Dockerfile
@@ -129,8 +146,10 @@ services:
     profiles:
       - indexer
     depends_on:
-      - postgres
-      - indexer-graphql
+      postgres:
+        condition: service_healthy
+      indexer-graphql:
+        condition: service_started
     build:
       context: .
       dockerfile: docker/web.Dockerfile

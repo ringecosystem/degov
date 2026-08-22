@@ -63,8 +63,8 @@ chain:
 indexer:
   endpoint: https://indexer.next.degov.ai/degov-demo-dao/graphql
   startBlock: 5873342
-  # The local SQD/Subsquid processor has been removed. Keep this endpoint pointed
-  # at an existing compatible API until the Datalens-native indexer is added.
+  # The default web stack uses this hosted endpoint. The Docker Compose indexer
+  # profile builds a separate local web image pointed at its local GraphQL service.
 
 # Core contracts related to the DAO Governance
 contracts:

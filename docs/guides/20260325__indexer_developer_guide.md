@@ -2,8 +2,8 @@
 
 > Purpose: orient developers working on the Datalens-native DeGov indexer.
 >
-> Read this when: adding Rust indexer code, validating the current indexer
-> placeholder, or checking the retained schema/reference artifacts.
+> Read this when: adding Rust indexer code, validating its runtime boundaries,
+> or checking the retained schema/reference artifacts.
 >
 > This does not document how to run the removed SQD/Subsquid processor.
 
@@ -14,15 +14,16 @@ indexer. The old SQD/Subsquid processor runtime, TypeScript handlers, TypeORM
 migrations, codegen commands, local SQD startup scripts, and GraphQL server
 scripts have been removed.
 
-The current checked-in indexer is intentionally a foundation rather than a full
-runtime. It contains:
+The checked-in runtime contains:
 
-- Rust configuration and Datalens client readiness code.
+- Rust configuration, Datalens client readiness, indexing, decoding, and
+  projection code.
 - The canonical fresh PostgreSQL initialization schema in
   `apps/indexer/migrations/0001_init.sql`.
+- GraphQL and onchain refresh worker entrypoints.
 - Historical GraphQL and ABI reference artifacts in `apps/indexer/reference/`.
-- Node-based transition checks for schema ownership, Rust conventions, DAO
-  compatibility preflight policy, and Postgres initialization smoke tests.
+- Rust and Node-based checks for runtime packaging, schema ownership,
+  compatibility, projection behavior, and Postgres initialization.
 
 ## Repository Layout
 
@@ -56,8 +57,9 @@ just build
 just test
 ```
 
-`just indexer test` runs the current transition checks and Rust tests. It does
-not start a historical processor or serve an indexer GraphQL endpoint yet.
+`just indexer test` runs the indexer checks and Rust tests. For the canonical
+configuration, migration, and startup workflow, use the root
+[deployment guide](../../README.md#datalens-backed-indexer-deployment).
 
 ## Database Schema
 
@@ -91,8 +93,8 @@ old SQD processor.
 
 ## Configuration
 
-The current Rust foundation expects Datalens service configuration through
-environment variables, including:
+The Rust runtime expects Datalens service configuration through environment
+variables, including:
 
 - `DATALENS_ENDPOINT`
 - `DATALENS_APPLICATION`

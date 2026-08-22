@@ -1,7 +1,6 @@
 # DeGov Indexer
 
-`apps/indexer` is reserved for the upcoming Datalens-native governance
-indexer.
+`apps/indexer` contains the Rust Datalens-backed governance indexer.
 
 The previous SQD/Subsquid processor runtime, migrations, codegen, local startup
 scripts, and onchain-refresh worker have been removed. Do not build new work on
@@ -9,12 +8,12 @@ the old processor architecture.
 
 ## Current boundary
 
-The package now contains the initial Rust configuration and Datalens client
-boundary for the upcoming runtime. It validates the deployed Datalens service
-base endpoint, application identity, bearer token, timeout, finality mode, chain
-identity, dataset key, and query block range limit at startup. The bearer token
-is loaded from environment or secret-backed configuration and is redacted by
-config formatting.
+The package provides the indexer runner, PostgreSQL migrations and projections,
+GraphQL service, Datalens readiness smoke, and optional onchain refresh worker.
+It validates the deployed Datalens service base endpoint, application identity,
+bearer token, timeout, finality mode, chain identity, dataset key, and query
+block range limit at startup. The bearer token is loaded from environment or
+secret-backed configuration and is redacted by config formatting.
 
 The default deployment model is one shared Postgres indexer database, one
 all-mode indexer process, one GraphQL service, one onchain refresh worker, and
@@ -56,7 +55,13 @@ the replacement implementation:
 They are not runtime inputs and should not be used to revive the SQD processor
 shell.
 
+## Build and test
+
 ```bash
 just build
 just test
 ```
+
+Use the root README's [Datalens-backed indexer deployment](../../README.md#datalens-backed-indexer-deployment)
+section for the canonical environment, configuration, migration, and startup
+workflow.
