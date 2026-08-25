@@ -19,6 +19,7 @@ import {
 import { hasProposalDirectoryLoadError } from "@/lib/proposal-directory-state";
 import type { ProposalListItem } from "@/services/graphql/types";
 import type { ProposalState as ProposalStatus } from "@/types/proposal";
+import { filterHiddenProposals } from "@/utils/proposal-visibility";
 
 import type { Address } from "viem";
 export type { SupportFilter } from "@/lib/proposal-directory-query";
@@ -105,8 +106,8 @@ export function useProposalData(
   });
 
   const flattenedData = useMemo<ProposalListItem[]>(() => {
-    return data?.pages.flat() || [];
-  }, [data]);
+    return filterHiddenProposals(daoConfig, data?.pages.flat() || []);
+  }, [daoConfig, data]);
 
   const directoryLoadFailed = hasProposalDirectoryLoadError({
     isError,

@@ -14,6 +14,7 @@ import {
 import type { ProposalItem } from "@/services/graphql/types";
 import type { Config } from "@/types/config";
 import { extractTitleAndDescription, parseDescription } from "@/utils/helpers";
+import { filterHiddenProposals } from "@/utils/proposal-visibility";
 import { isDegovApiConfiguredServer } from "@/utils/remote-api";
 
 const SITEMAP_PROPOSAL_LIMIT = 500;
@@ -129,7 +130,9 @@ export async function getSitemapProposalIds(config: Config): Promise<string[]> {
       where: publicGovernanceScope(config),
     });
 
-    return proposals.map((proposal) => proposal.proposalId).filter(Boolean);
+    return filterHiddenProposals(config, proposals)
+      .map((proposal) => proposal.proposalId)
+      .filter(Boolean);
   } catch (error) {
     console.error("Failed to load sitemap proposal URLs:", error);
     return [];

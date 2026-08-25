@@ -15,6 +15,11 @@
     "indexingProblemTitle": "Proposal Indexing Delayed",
     "indexingProblemDescription": "This proposal is on chain, but the page data is still unavailable. Please try again later."
   },
+  "hidden": {
+    "title": "Proposal unavailable",
+    "proposalId": "Proposal ID",
+    "viewOnExplorer": "View on Explorer"
+  },
   "tabs": {
     "content": "Content",
     "votes": "Votes",

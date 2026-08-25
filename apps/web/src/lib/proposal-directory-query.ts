@@ -6,6 +6,7 @@ import {
 } from "@/services/graphql";
 import type { ProposalListItem } from "@/services/graphql/types";
 import type { Config } from "@/types/config";
+import { filterHiddenProposals } from "@/utils/proposal-visibility";
 
 export {
   buildProposalInfiniteInitialData,
@@ -80,11 +81,23 @@ export async function fetchProposalListPage({
   support?: SupportFilter;
   connectedAddress?: string;
 }) {
-  return proposalService.getProposalsList(config.indexer?.endpoint as string, {
-    limit,
-    offset,
-    orderBy: PROPOSAL_LIST_ORDER_BY,
-    where: buildProposalListWhere({ config, address, support }),
-    voter: connectedAddress?.toLowerCase(),
-  });
+  const hiddenCount = config.hiddenProposals?.length ?? 0;
+  const fetchFromStart = hiddenCount > 0;
+  const proposals = await proposalService.getProposalsList(
+    config.indexer?.endpoint as string,
+    {
+      // ponytail: refetch from zero while GraphQL lacks proposalId_not_in;
+      // add that filter if large proposal directories make this measurable.
+      limit: fetchFromStart ? offset + limit + hiddenCount : limit,
+      offset: fetchFromStart ? 0 : offset,
+      orderBy: PROPOSAL_LIST_ORDER_BY,
+      where: buildProposalListWhere({ config, address, support }),
+      voter: connectedAddress?.toLowerCase(),
+    }
+  );
+
+  return filterHiddenProposals(config, proposals).slice(
+    fetchFromStart ? offset : 0,
+    fetchFromStart ? offset + limit : limit
+  );
 }

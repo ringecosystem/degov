@@ -17,9 +17,11 @@ import { Link } from "@/i18n/navigation";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { parseDescription } from "@/utils";
+import { findHiddenProposal } from "@/utils/proposal-visibility";
 import { CACHE_TIMES } from "@/utils/query-config";
 
 import { CurrentVotes } from "./current-votes";
+import { HiddenProposalNotice } from "./hidden-proposal";
 import { getProposalMissingState } from "./proposal-indexing-state";
 import { ProposalReadAnalytics } from "./proposal-read-analytics";
 import Status from "./status";
@@ -49,6 +51,10 @@ export function ProposalDetailClient() {
 
   const params = useParams();
   const id = params?.id;
+  const hiddenProposal = useMemo(() => {
+    const proposalId = Array.isArray(id) ? id[0] : id;
+    return proposalId ? findHiddenProposal(daoConfig, proposalId) : undefined;
+  }, [daoConfig, id]);
 
   const proposalDisplayId = useMemo(() => {
     const rawId = Array.isArray(id) ? id[0] : id;
@@ -81,6 +87,7 @@ export function ProposalDetailClient() {
     query: {
       refetchInterval: CACHE_TIMES.TEN_SECONDS,
       enabled:
+        !hiddenProposal &&
         !!validId && !!daoConfig?.contracts?.governor && !!daoConfig?.chain?.id,
     },
   });
@@ -117,7 +124,8 @@ export function ProposalDetailClient() {
           proposalId_eq: id as string,
         },
       }),
-    enabled: !!validId && !!daoConfig?.indexer.endpoint,
+    enabled:
+      !hiddenProposal && !!validId && !!daoConfig?.indexer.endpoint,
     refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
   });
   const chainExists = !isNil(proposalStatus?.data);
@@ -179,6 +187,7 @@ export function ProposalDetailClient() {
           return result ?? null;
         },
         enabled:
+          !hiddenProposal &&
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
         refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
@@ -199,6 +208,7 @@ export function ProposalDetailClient() {
           return result ?? null;
         },
         enabled:
+          !hiddenProposal &&
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
         refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
@@ -219,6 +229,7 @@ export function ProposalDetailClient() {
           return result ?? null;
         },
         enabled:
+          !hiddenProposal &&
           !isNil(data?.proposalId) && !isNil(daoConfig?.indexer?.endpoint),
         refetchInterval: isActive ? CACHE_TIMES.TEN_SECONDS : false,
       },
@@ -319,6 +330,10 @@ export function ProposalDetailClient() {
     refetchProposalExecutedById,
     refetchProposalQueuedById,
   ]);
+
+  if (hiddenProposal && daoConfig) {
+    return <HiddenProposalNotice config={daoConfig} proposal={hiddenProposal} />;
+  }
 
   if (!validId) {
     return <NotFound />;
