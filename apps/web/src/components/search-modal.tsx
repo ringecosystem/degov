@@ -18,6 +18,7 @@ import { useRouter as useLocaleRouter } from "@/i18n/navigation";
 import type { Types } from "@/services/graphql";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { extractTitleAndDescription, parseDescription } from "@/utils";
+import { filterHiddenProposals } from "@/utils/proposal-visibility";
 
 // Helper function to strip HTML tags from text
 const stripHtmlTags = (html: string): string => {
@@ -98,8 +99,8 @@ export function SearchModal({
     });
 
   const flattenedData = React.useMemo<Types.ProposalDescriptionItem[]>(() => {
-    return data?.pages.flat() || [];
-  }, [data]);
+    return filterHiddenProposals(daoConfig, data?.pages.flat() || []);
+  }, [daoConfig, data]);
 
   const renderSkeletons = () => {
     return Array(5)
@@ -235,7 +236,16 @@ export function SearchModal({
             </div>
           ) : (
             <div className="py-6 text-center text-muted-foreground">
-              {search ? t("noResults") : t("startTyping")}
+              <div>{search ? t("noResults") : t("startTyping")}</div>
+              {hasNextPage && (
+                <button
+                  onClick={loadMoreData}
+                  className="mt-4 text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? t("loading") : t("loadMore")}
+                </button>
+              )}
             </div>
           )}
         </div>

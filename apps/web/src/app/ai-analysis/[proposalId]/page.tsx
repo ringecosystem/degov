@@ -11,6 +11,9 @@ import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { ProposalState } from "@/types/proposal";
 import { parseDescription } from "@/utils/helpers";
+import { findHiddenProposal } from "@/utils/proposal-visibility";
+
+import { HiddenProposalNotice } from "../../proposal/[id]/hidden-proposal";
 
 import { AiAnalysisStandalone } from "./ai-analysis-standalone";
 
@@ -25,6 +28,7 @@ export default function AiAnalysisPage({
   const t = useTranslations("aiAnalysis");
   const [proposalId, setProposalId] = useState<string>("");
   const daoConfig = useDaoConfig();
+  const hiddenProposal = findHiddenProposal(daoConfig, proposalId);
 
   useEffect(() => {
     const loadParams = async () => {
@@ -43,6 +47,7 @@ export default function AiAnalysisPage({
     chainId: daoConfig?.chain?.id,
     query: {
       enabled:
+        !hiddenProposal &&
         !!proposalId &&
         !!daoConfig?.contracts?.governor &&
         !!daoConfig?.chain?.id,
@@ -93,7 +98,8 @@ export default function AiAnalysisPage({
 
       return null;
     },
-    enabled: !!proposalId && !!daoConfig?.indexer?.endpoint,
+    enabled:
+      !hiddenProposal && !!proposalId && !!daoConfig?.indexer?.endpoint,
   });
 
   // Query to get AI analysis data (API deprecated, disabled for now)
@@ -123,6 +129,10 @@ export default function AiAnalysisPage({
         </div>
       </div>
     );
+  }
+
+  if (hiddenProposal && daoConfig) {
+    return <HiddenProposalNotice config={daoConfig} proposal={hiddenProposal} />;
   }
 
   if (isLoading) {

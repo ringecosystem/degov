@@ -94,6 +94,12 @@ interface AnalysisConfigGa {
   tag: string;
 }
 
+interface HiddenProposal {
+  id: string;
+  reason: string;
+  transactionHash?: string;
+}
+
 interface Config {
   name: string;
   code: string;
@@ -113,6 +119,7 @@ interface Config {
   apps?: AppConfig;
   editLink?: string;
   analysis?: AnalysisConfig;
+  hiddenProposals?: HiddenProposal[];
 }
 
 export type {
@@ -134,4 +141,5 @@ export type {
   FaqConfig,
   AnalysisConfig,
   AnalysisConfigGa,
+  HiddenProposal,
 };

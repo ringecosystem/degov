@@ -6,6 +6,7 @@ import {
 } from "@/lib/metadata";
 import { buildGovernanceScope, proposalService } from "@/services/graphql";
 import { extractTitleAndDescription, parseDescription } from "@/utils/helpers";
+import { findHiddenProposal } from "@/utils/proposal-visibility";
 import { isDegovApiConfiguredServer } from "@/utils/remote-api";
 
 import type { Metadata } from "next";
@@ -30,6 +31,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const config = await getDaoConfig();
+
+  if (findHiddenProposal(config, id)) {
+    return buildNoPublicPreviewMetadata("Proposal unavailable");
+  }
 
   try {
     BigInt(id);
