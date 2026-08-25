@@ -236,7 +236,16 @@ export function SearchModal({
             </div>
           ) : (
             <div className="py-6 text-center text-muted-foreground">
-              {search ? t("noResults") : t("startTyping")}
+              <div>{search ? t("noResults") : t("startTyping")}</div>
+              {hasNextPage && (
+                <button
+                  onClick={loadMoreData}
+                  className="mt-4 text-foreground transition-colors hover:text-foreground/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? t("loading") : t("loadMore")}
+                </button>
+              )}
             </div>
           )}
         </div>
