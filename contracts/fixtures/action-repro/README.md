@@ -18,6 +18,16 @@ The proposal is only for checking action construction. Do not vote, queue, or ex
 
 The FT is reused so the reproduction needs only one deployment.
 
+## Deployed reproduction target
+
+- Address: `0x8727d2141b941D6747af16B0Eb8EFf37aDb03F66`
+- Deployment transaction: `0x6cf4ef7fa15df2482423bb7e974518d30fdda06e8f078c988d3877afc7c6dbfd`
+- Block: `12844466`
+- Deployer: `0xA2D76258AA44E77D5bF4AcA1A1d6E0F82fa85989`
+- Runtime bytecode hash: `0x20ef19645ecd72bf7c52f71417b6681151d8f7114f0c03c6f6ff5b852c014ffe`
+
+The deployed bytecode matches the local Foundry artifact. Its initial `lastToken` and `releaseCount` values were both zero.
+
 ## Build and deploy the target
 
 Use a Foundry account that can sign on Darwinia. Keep the key in Foundry's encrypted keystore; do not put it in this repository or pass it on the command line.
@@ -33,7 +43,7 @@ forge script script/ActionRepro.s.sol:DeployActionReproTarget \
   --legacy
 ```
 
-Record the `ActionReproTarget` address printed by the script.
+Record the `ActionReproTarget` address printed by the script. The deployment above can be reused for the current reproduction.
 
 ## Build the proposal on demo.degov.ai
 
