@@ -43,3 +43,21 @@ gtk:  0xef8ef3A1705f42e7FC1e06809940ec5942F5bB98
 timelock:  0xa7E9dC6aBe0EfcdaBB8ED0471De0c56013066c20
 dgov:  0x449337BBe404CaE0bA82f3451661AF7481f37aaC
 ```
+
+## Base Playground Faucet
+
+`PlaygroundFaucet` distributes the Base Playground GTK token only:
+
+- chain ID: `8453`
+- token: `0xef8ef3A1705f42e7FC1e06809940ec5942F5bB98`
+- amount: `100 GTK` per claim
+- cooldown: `24 hours` per address
+- global limit: `100,000 GTK` per UTC day
+- native Base ETH is not distributed by this faucet
+
+Deploy with `PLAYGROUND_FAUCET_OWNER` set to a dedicated operations owner:
+
+```sh
+forge script script/PlaygroundFaucet.s.sol:DeployPlaygroundFaucet \
+  --chain-id 8453 --rpc-url <base-rpc-url> --broadcast
+```
