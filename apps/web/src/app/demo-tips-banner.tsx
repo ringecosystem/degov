@@ -6,9 +6,10 @@ import { AlertIcon } from "@/components/icons";
 
 interface DemoTipsBannerProps {
   isDemoDao?: boolean;
+  faucetUrl?: string;
 }
 
-export function DemoTipsBanner({ isDemoDao }: DemoTipsBannerProps) {
+export function DemoTipsBanner({ isDemoDao, faucetUrl }: DemoTipsBannerProps) {
   const t = useTranslations("common.demoBanner");
 
   if (!isDemoDao) return null;
@@ -31,6 +32,11 @@ export function DemoTipsBanner({ isDemoDao }: DemoTipsBannerProps) {
                 </a>
               ),
             })}
+            {faucetUrl ? (
+              <a href={faucetUrl} className="ml-3 font-bold underline">
+                {t("faucet")}
+              </a>
+            ) : null}
           </span>
         </span>
       </div>

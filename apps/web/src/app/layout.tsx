@@ -151,7 +151,9 @@ export default async function RootLayout({
           <NextThemeProvider>
             <ConfigProvider initialConfig={initialConfig}>
               <TooltipProvider delayDuration={0}>
-                <ConditionalLayout banner={<DemoTipsBanner isDemoDao={isDemoDao} />}>
+                <ConditionalLayout
+                  banner={<DemoTipsBanner isDemoDao={isDemoDao} faucetUrl={initialConfig.faucetUrl} />}
+                >
                   {children}
                 </ConditionalLayout>
                 <ToastContainer />

@@ -77,7 +77,8 @@
     "totalDelegates": "Total Delegates"
   },
   "demoBanner": {
-    "message": "Note: Welcome to the DeGov demo. Comment your ETH address <link>here</link> to receive test tokens."
+    "message": "Note: Welcome to the DeGov demo. Comment your ETH address <link>here</link> to receive test tokens.",
+    "faucet": "Get GTK from the Faucet"
   },
   "editor": {
     "table": {

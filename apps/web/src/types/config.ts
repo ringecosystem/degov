@@ -99,6 +99,7 @@ interface Config {
   code: string;
   logo: string;
   siteUrl: string;
+  faucetUrl?: string;
   offChainDiscussionUrl?: string;
   features?: string[];
   description: string;
