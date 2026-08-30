@@ -11,6 +11,7 @@ contract DeployPlaygroundFaucet is Script {
 
     function run() external returns (PlaygroundFaucet faucet) {
         require(block.chainid == BASE_CHAIN_ID, "faucet deploy must run on Base");
+        require(PLAYGROUND_GTK.code.length > 0, "playground GTK has no code");
         address owner = vm.envAddress("PLAYGROUND_FAUCET_OWNER");
 
         vm.startBroadcast();

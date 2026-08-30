@@ -27,7 +27,10 @@ contract PlaygroundFaucet is Ownable, Pausable {
     }
 
     function claim() external whenNotPaused {
-        require(lastClaimAt[msg.sender] + COOLDOWN <= block.timestamp, "claim cooldown active");
+        require(
+            lastClaimAt[msg.sender] == 0 || lastClaimAt[msg.sender] + COOLDOWN <= block.timestamp,
+            "claim cooldown active"
+        );
         require(token.balanceOf(address(this)) >= CLAIM_AMOUNT, "faucet balance too low");
         _rollDailyBudget();
         require(dailyClaimed + CLAIM_AMOUNT <= DAILY_LIMIT, "daily faucet limit reached");
