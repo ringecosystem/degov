@@ -6,10 +6,19 @@ import { AlertIcon } from "@/components/icons";
 
 interface DemoTipsBannerProps {
   isDemoDao?: boolean;
+  faucetUrl?: string;
 }
 
-export function DemoTipsBanner({ isDemoDao }: DemoTipsBannerProps) {
+export function DemoTipsBanner({ isDemoDao, faucetUrl }: DemoTipsBannerProps) {
   const t = useTranslations("common.demoBanner");
+  const safeFaucetUrl = (() => {
+    if (!faucetUrl) return undefined;
+    try {
+      return new URL(faucetUrl).protocol === "https:" ? faucetUrl : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
 
   if (!isDemoDao) return null;
 
@@ -31,6 +40,11 @@ export function DemoTipsBanner({ isDemoDao }: DemoTipsBannerProps) {
                 </a>
               ),
             })}
+            {safeFaucetUrl ? (
+              <a href={safeFaucetUrl} target="_blank" rel="noreferrer" className="ml-3 font-bold underline">
+                {t("faucet")}
+              </a>
+            ) : null}
           </span>
         </span>
       </div>
