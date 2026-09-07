@@ -86,7 +86,7 @@ export default function ProposalDraftsPage() {
             </p>
           </div>
           <Button asChild>
-            <Link href="/proposals/new">{t("newProposal")}</Link>
+            <Link href="/proposals/new">{t("createFromScratch")}</Link>
           </Button>
         </header>
 

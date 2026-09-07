@@ -3,16 +3,14 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useState } from "react";
 import { useAccount } from "wagmi";
 
-import { PlusIcon } from "@/components/icons";
-import { NewPublishWarning } from "@/components/new-publish-warning";
+import { NewProposalEntry } from "@/components/new-proposal-entry";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
 import type { SupportFilter } from "@/components/proposals-table/hooks/useProposalData";
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -23,15 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useMyVotes } from "@/hooks/useMyVotes";
-import { Link, useRouter } from "@/i18n/navigation";
+import { useRouter } from "@/i18n/navigation";
 import type { InitialProposalPage } from "@/lib/proposal-directory-query";
 import { proposalService } from "@/services/graphql";
-import { isProposalFeatureEnabled } from "@/utils/proposal-features";
-import {
-  degovGraphqlApi,
-  isDegovApiConfiguredClient,
-} from "@/utils/remote-api";
 
 import type { CheckedState } from "@radix-ui/react-checkbox";
 
@@ -75,24 +67,14 @@ function ProposalsContent({
   const supportParam = searchParams?.get("support");
   const addressParam = searchParams?.get("address");
   const daoConfig = useDaoConfig();
-
   const [support, setSupport] = useState<SupportSelection>(
     normalizeSupportParam(supportParam)
   );
   const { isConnected, address } = useAccount();
-  const showDrafts = isProposalFeatureEnabled(
-    daoConfig,
-    "proposal-drafts",
-    isDegovApiConfiguredClient() ? degovGraphqlApi() : undefined
-  );
-  const [publishWarningOpen, setPublishWarningOpen] = useState(false);
 
   const [isMyProposals, setIsMyProposals] = useState<CheckedState>(
     typeParam === "my"
   );
-
-  // Get voting power information
-  const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
 
   const { data: dataMetrics } = useQuery({
     queryKey: ["dataMetrics", daoConfig?.indexer?.endpoint],
@@ -153,15 +135,6 @@ function ProposalsContent({
     return t("title");
   };
 
-  const handleNewProposalClick = useCallback(() => {
-    if (isConnected && !hasEnoughVotes) {
-      setPublishWarningOpen(true);
-      return;
-    }
-
-    router.push("/proposals/new");
-  }, [isConnected, hasEnoughVotes, router]);
-
   const proposalAddress = isMyProposals
     ? address
     : (addressParam as `0x${string}` | undefined);
@@ -174,7 +147,7 @@ function ProposalsContent({
           <div className="flex items-start lg:items-center flex-col lg:flex-row justify-between gap-[20px]">
             <h1 className="text-[18px] font-extrabold">{getDisplayTitle()}</h1>
 
-            <div className="flex items-center gap-[20px] w-full lg:w-auto">
+            <div className="flex flex-wrap items-center gap-[20px] w-full lg:w-auto">
               {isConnected && (
                 <>
                   <div className="flex items-center space-x-2">
@@ -211,22 +184,10 @@ function ProposalsContent({
               )}
 
               <div className="hidden items-center gap-[8px] lg:flex">
-                {showDrafts && (
-                  <Button variant="outline" className="rounded-[100px]" asChild>
-                    <Link href="/proposals/drafts">{t("drafts")}</Link>
-                  </Button>
-                )}
-                <Button
-                  className="flex items-center gap-[5px] rounded-[100px]"
-                  onClick={handleNewProposalClick}
-                >
-                  <PlusIcon
-                    width={20}
-                    height={20}
-                    className="size-[20px] text-current"
-                  />
-                  {t("newProposal")}
-                </Button>
+                <NewProposalEntry className="flex items-center gap-[5px] rounded-[100px]" />
+              </div>
+              <div className="basis-full lg:hidden">
+                <NewProposalEntry className="flex w-full items-center gap-[5px] rounded-[100px]" />
               </div>
             </div>
           </div>
@@ -263,13 +224,6 @@ function ProposalsContent({
         </div>
       </div>
 
-      {/* Insufficient Voting Power Warning Dialog */}
-      <NewPublishWarning
-        open={publishWarningOpen}
-        onOpenChange={setPublishWarningOpen}
-        proposalThreshold={proposalThreshold}
-        votes={votes}
-      />
     </div>
   );
 }
