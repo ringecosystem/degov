@@ -167,3 +167,36 @@ test("draft UI remains capability gated and private routes are not indexed", () 
   assert.match(editor, /isDegovApiConfiguredClient/);
   assert.match(robots, /\/proposals\/drafts/);
 });
+
+test("new proposal entry owns the draft choice while the editor has explicit routes", () => {
+  const entry = readFileSync(
+    new URL("../src/components/new-proposal-entry.tsx", import.meta.url),
+    "utf8"
+  );
+  const editor = readFileSync(
+    new URL("../src/app/proposals/new/page.tsx", import.meta.url),
+    "utf8"
+  );
+  const dashboard = readFileSync(
+    new URL("../src/app/_components/proposals.tsx", import.meta.url),
+    "utf8"
+  );
+  const proposals = readFileSync(
+    new URL("../src/app/proposals/proposals-client.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(entry, /router\.push\("\/proposals\/drafts"\)/);
+  assert.match(entry, /router\.push\("\/proposals\/new"\)/);
+  assert.match(entry, /NewPublishWarning/);
+  assert.match(entry, /proposal-drafts/);
+  assert.match(entry, /max-w-\[calc\(100vw-24px\)\]/);
+  assert.match(entry, /aria-label=\{t\("close"\)\}/);
+  assert.match(dashboard, /NewProposalEntry/);
+  assert.match(proposals, /NewProposalEntry/);
+  assert.doesNotMatch(dashboard, /href="\/proposals\/drafts"/);
+  assert.doesNotMatch(proposals, /href="\/proposals\/drafts"/);
+  assert.doesNotMatch(editor, /useProposalDrafts\(/);
+  assert.doesNotMatch(editor, /recentDrafts/);
+  assert.match(editor, /return <ProposalEditor syncEnabled \/>;/);
+});
