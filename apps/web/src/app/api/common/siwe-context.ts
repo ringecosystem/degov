@@ -30,7 +30,7 @@ function isLocalHost(host: string): boolean {
   );
 }
 
-function resolveSiweRequestOrigin(headers: HeaderReader): URL {
+export function resolveSiweRequestOrigin(headers: HeaderReader): URL {
   const forwardedHost = firstHeaderValue(headers.get("x-forwarded-host"));
   const host = forwardedHost ?? firstHeaderValue(headers.get("host"));
 

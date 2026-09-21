@@ -214,6 +214,31 @@ test("SIWE auth routes use a DB-backed nonce store with a signed nonce cookie", 
   assert.doesNotMatch(loginRouteSource, /nonceCache/);
 });
 
+test("comment authentication uses one generic remote challenge", () => {
+  const nonceRouteSource = readFileSync(
+    new URL("../src/app/api/auth/nonce/route.ts", import.meta.url),
+    "utf8"
+  );
+  const siweServiceSource = readFileSync(
+    new URL("../src/lib/auth/siwe-service.ts", import.meta.url),
+    "utf8"
+  );
+  const rainbowKitSource = readFileSync(
+    new URL("../src/lib/rainbowkit-auth.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(nonceRouteSource, /authChallenge/);
+  assert.match(nonceRouteSource, /space: "degov"/);
+  assert.match(nonceRouteSource, /method: "EIP4361"/);
+  assert.match(nonceRouteSource, /Origin: requestOrigin\.origin/);
+  assert.match(siweServiceSource, /verifyAuthChallenge/);
+  assert.match(siweServiceSource, /challengeId/);
+  assert.doesNotMatch(siweServiceSource, /mutation Login/);
+  assert.match(siweServiceSource, /remoteMessage \?\? this\.createMessage/);
+  assert.match(rainbowKitSource, /siweService\.getNonce\(\)/);
+});
+
 test("SIWE login route only uses address controls after signature verification", () => {
   const loginRouteSource = readFileSync(
     new URL("../src/app/api/auth/login/route.ts", import.meta.url),

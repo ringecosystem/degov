@@ -1,5 +1,6 @@
 import * as CryptoJS from "crypto-js";
 import { NextResponse } from "next/server";
+import { SiweMessage } from "siwe";
 
 import { Resp } from "@/types/api";
 import { degovGraphqlApi } from "@/utils/remote-api";
@@ -9,6 +10,10 @@ import {
   createSiweRequestIdentity,
   logSiweThrottle,
 } from "../../common/siwe-abuse-controls";
+import {
+  resolveSiweRequestOrigin,
+  validateSiweContext,
+} from "../../common/siwe-context";
 import {
   SIWE_NONCE_COOKIE_MAX_AGE_SECONDS,
   SIWE_NONCE_COOKIE_NAME,
@@ -20,6 +25,11 @@ import type { NextRequest } from "next/server";
 
 // Define a type for the source of the nonce for better type-safety
 type NonceSource = "generated" | "remote";
+
+type RemoteChallenge = {
+  id: string;
+  message: string;
+};
 
 export async function POST(request: NextRequest) {
   const jwtSecretKey = process.env.JWT_SECRET_KEY;
@@ -43,63 +53,100 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const input = await request.json().catch(() => ({}));
+  const address = typeof input.address === "string" ? input.address : undefined;
+  const chainId = Number.isSafeInteger(input.chainId) ? input.chainId : undefined;
+  const wantsRemoteChallenge = address !== undefined || chainId !== undefined;
+
+  if (wantsRemoteChallenge && (!address || !chainId || chainId <= 0)) {
+    return NextResponse.json(Resp.err("invalid auth challenge request"), {
+      status: 400,
+    });
+  }
+
   let nonce = CryptoJS.lib.WordArray.random(32).toString(CryptoJS.enc.Hex);
-  // Initialize the source as 'generated'. This will be the default unless
-  // we successfully fetch from the remote API.
   let source: NonceSource = "generated";
+  let challenge: RemoteChallenge | undefined;
 
   const graphqlEndpoint = degovGraphqlApi();
 
-  if (graphqlEndpoint) {
+  if (graphqlEndpoint && wantsRemoteChallenge) {
     try {
-      // Define the GraphQL query.
+      const requestOrigin = resolveSiweRequestOrigin(request.headers);
       const graphqlQuery = {
         query: `
-          query QueryNonce {
-            nonce(input: {})
+          mutation AuthChallenge($input: AuthChallengeInput!) {
+            authChallenge(input: $input) {
+              id
+              message
+            }
           }
         `,
+        variables: {
+          input: {
+            space: "degov",
+            method: "EIP4361",
+            address,
+            chainRef: String(chainId),
+          },
+        },
       };
 
-      // Send a POST request to the GraphQL API.
       const response = await fetch(graphqlEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Origin: requestOrigin.origin,
         },
         body: JSON.stringify(graphqlQuery),
+        cache: "no-store",
       });
 
       if (!response.ok) {
-        // If the HTTP status code is not in the 200-299 range, throw an error.
         throw new Error(
           `GraphQL request failed with status ${response.status}`
         );
       }
 
       const body = await response.json();
-
-      if (body.data && body.data.nonce) {
-        nonce = body.data.nonce;
-        source = "remote"; // Update the source since we got it from the remote API.
-      } else {
-        // If the response format is not as expected, log a warning.
-        // The code will proceed with the generated nonce.
-        console.warn(
-          "Nonce not found in GraphQL response, using fallback.",
-          body
+      challenge = body.data?.authChallenge;
+      if (!challenge?.id || !challenge.message) {
+        throw new Error(
+          body.errors?.[0]?.message || "Invalid auth challenge response"
         );
       }
+
+      const message = new SiweMessage(challenge.message);
+      if (message.address.toLowerCase() !== address!.toLowerCase()) {
+        throw new Error("Auth challenge address does not match request");
+      }
+      validateSiweContext(message, {
+        domain: requestOrigin.host,
+        uri: requestOrigin.origin,
+        chainId: chainId!,
+        nonce: message.nonce,
+      });
+
+      nonce = message.nonce;
+      source = "remote";
     } catch (error) {
-      // If the fetch or subsequent processing fails, log the error.
-      // The function will continue to use the locally generated fallback nonce.
-      console.error("Failed to fetch nonce from GraphQL:", error);
+      console.error("Failed to create remote auth challenge:", error);
+      return NextResponse.json(Resp.err("failed to create auth challenge"), {
+        status: 502,
+      });
     }
   }
 
   await storeSiweNonce(nonce);
 
-  const response = NextResponse.json(Resp.ok({ nonce, source }));
+  const response = NextResponse.json(
+    Resp.ok({
+      nonce,
+      source,
+      challengeId: challenge?.id,
+      message: challenge?.message,
+    })
+  );
   const signedNonce = await signSiweNonceCookieValue(nonce, jwtSecretKey);
 
   response.cookies.set({
