@@ -138,6 +138,7 @@ services:
       - "${DEGOV_WEB_PORT:-3000}:3000"
     environment:
       JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET:-}
+      DISCUSSION_ADMIN_TOKEN: ${DEGOV_DISCUSSION_ADMIN_TOKEN:-}
       DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/degov
       # DEGOV_CONFIG_PATH: degov.yml
 
@@ -159,4 +160,5 @@ services:
       - "${DEGOV_WEB_INDEXER_PORT:-3001}:3000"
     environment:
       JWT_SECRET_KEY: ${DEGOV_WEB_JWT_SECRET:-}
+      DISCUSSION_ADMIN_TOKEN: ${DEGOV_DISCUSSION_ADMIN_TOKEN:-}
       DATABASE_URL: postgresql://postgres:${DEGOV_DB_PASSWORD:-postgres}@postgres/degov

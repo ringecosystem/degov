@@ -2,9 +2,7 @@ export type ProposalCommentState = "ACTIVE" | "DELETED";
 
 export interface ProposalComment {
   id: string;
-  daoCode: string;
-  chainId: number;
-  proposalId: string;
+  targetId: string;
   authorAddress: `0x${string}`;
   replyToId?: string | null;
   body?: string | null;
@@ -44,4 +42,11 @@ export interface UpdateProposalCommentInput {
 export interface DeleteProposalCommentInput {
   daoCode: string;
   commentId: string;
+}
+
+export interface DiscussionTarget {
+  id: string;
+  space: string;
+  path: string;
+  status: "ACTIVE" | "LOCKED";
 }

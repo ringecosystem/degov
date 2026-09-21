@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { threadProposalComments } from "../src/app/proposal/[id]/comment-tree.ts";
+import {
+  discussionTargetInput,
+  discussionTargetInputs,
+} from "../src/services/discussion-target.ts";
 import { isProposalFeatureEnabled } from "../src/utils/proposal-features.ts";
 
 import type { ProposalComment } from "../src/services/graphql/types/proposal-comments.ts";
@@ -13,14 +17,66 @@ const comment = (
   state: ProposalComment["state"] = "ACTIVE"
 ): ProposalComment => ({
   id,
-  daoCode: "demo",
-  chainId: 1,
-  proposalId: "1",
+  targetId: "target-1",
   authorAddress: `0x${id.padStart(40, "0")}`,
   replyToId,
   body: state === "ACTIVE" ? id : null,
   state,
   ctime: "2026-08-20T00:00:00Z",
+});
+
+test("proposal discussions use stable generic targets", () => {
+  assert.deepEqual(discussionTargetInput("demo", "42"), {
+    space: "degov",
+    path: "/daos/demo/proposals/42",
+  });
+  assert.deepEqual(
+    discussionTargetInputs("demo", "0x2a").map(({ path }) => path),
+    [
+      "/daos/demo/proposals/42",
+      "/daos/demo/proposals/0x2a",
+      `/daos/demo/proposals/0x${"2a".padStart(64, "0")}`,
+    ]
+  );
+  assert.throws(() => discussionTargetInputs("demo", " "));
+  assert.throws(() => discussionTargetInputs("demo", "-1"));
+  assert.throws(() => discussionTargetInputs("demo", (1n << 256n).toString()));
+
+  const service = readFileSync(
+    new URL("../src/services/proposal-comments.ts", import.meta.url),
+    "utf8"
+  );
+  const mutations = readFileSync(
+    new URL(
+      "../src/services/graphql/mutations/proposal-comments.ts",
+      import.meta.url
+    ),
+    "utf8"
+  );
+  assert.match(service, /DISCUSSION_TARGET/);
+  assert.match(service, /DISCUSSION_COMMENTS/);
+  assert.match(mutations, /createDiscussionComment/);
+  assert.match(mutations, /updateDiscussionComment/);
+  assert.match(mutations, /deleteDiscussionComment/);
+  assert.doesNotMatch(mutations, /createProposalComment/);
+});
+
+test("verified proposal pages register missing discussion targets server-side", () => {
+  const page = readFileSync(
+    new URL("../src/app/proposal/[id]/page.tsx", import.meta.url),
+    "utf8"
+  );
+  const registration = readFileSync(
+    new URL("../src/app/_server/discussion.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(page, /if \(proposal\)/);
+  assert.match(page, /ensureDiscussionTarget\(config\.code, proposal\.proposalId\)/);
+  assert.match(registration, /DISCUSSION_ADMIN_TOKEN/);
+  assert.match(registration, /X-Discussion-Admin-Token/);
+  assert.match(registration, /registerDiscussionTarget/);
+  assert.match(registration, /if \(existing\?\.discussionTarget\) return/);
 });
 
 const config = {

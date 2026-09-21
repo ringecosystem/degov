@@ -1,11 +1,20 @@
-export const PROPOSAL_COMMENTS = `
-  query ProposalComments($input: ProposalCommentsInput!) {
-    proposalComments(input: $input) {
+export const DISCUSSION_TARGET = `
+  query DiscussionTarget($input: DiscussionTargetInput!) {
+    discussionTarget(input: $input) {
+      id
+      space
+      path
+      status
+    }
+  }
+`;
+
+export const DISCUSSION_COMMENTS = `
+  query DiscussionComments($input: DiscussionCommentsInput!) {
+    discussionComments(input: $input) {
       items {
         id
-        daoCode
-        chainId
-        proposalId
+        targetId
         authorAddress
         replyToId
         body

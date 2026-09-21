@@ -4,6 +4,7 @@ import { buildProposalWebPageJsonLd } from "@/lib/structured-data";
 import { findHiddenProposal } from "@/utils/proposal-visibility";
 
 import { proposalDetailPublicSummaryHtml } from "../../_components/public-route-summary";
+import { ensureDiscussionTarget } from "../../_server/discussion";
 import { getActiveDaoConfig, getPublicProposalDetail } from "../../_server/public-seo";
 
 import { HiddenProposalNotice } from "./hidden-proposal";
@@ -26,6 +27,14 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
 
   if (invalidId) {
     notFound();
+  }
+
+  if (proposal) {
+    try {
+      await ensureDiscussionTarget(config.code, proposal.proposalId);
+    } catch (error) {
+      console.warn("Failed to ensure discussion target:", error);
+    }
   }
 
   const proposalJsonLd = buildProposalWebPageJsonLd(config, proposal);

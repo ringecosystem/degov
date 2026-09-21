@@ -43,10 +43,16 @@ export class SiweService {
     this.config = { ...this.config, ...config };
   }
 
-  async getNonce(): Promise<{ nonce: string; source: "generated" | "remote" }> {
+  async getNonce(params?: { address: `0x${string}`; chainId: number }): Promise<{
+    nonce: string;
+    source: "generated" | "remote";
+    challengeId?: string;
+    message?: string;
+  }> {
     const response = await fetch("/api/auth/nonce", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params ?? {}),
       cache: "no-store",
     });
 
@@ -55,7 +61,7 @@ export class SiweService {
     }
 
     const { data } = await response.json();
-    return { nonce: data.nonce, source: data.source };
+    return data;
   }
 
   createMessage(params: {
@@ -117,6 +123,7 @@ export class SiweService {
     signature: `0x${string}`;
     address: `0x${string}`;
     nonceSource?: "generated" | "remote";
+    challengeId?: string;
   }): Promise<{
     success: boolean;
     token?: string;
@@ -124,7 +131,7 @@ export class SiweService {
     error?: string;
   }> {
     try {
-      const { message, signature, address, nonceSource } = params;
+      const { message, signature, address, nonceSource, challengeId } = params;
 
       let localAuthenticated = false;
       let remoteToken: string | undefined;
@@ -133,22 +140,24 @@ export class SiweService {
       const localResult = await this.loginLocal(message, signature);
       if (localResult.success) {
         localAuthenticated = true;
-        tokenManager.setToken("authenticated", address);
       } else {
         errors.push(`Local login failed: ${localResult.error}`);
       }
 
-      if (nonceSource === "remote") {
-        const remoteResult = await this.loginRemote(message, signature);
+      if (localAuthenticated && nonceSource === "remote") {
+        const remoteResult = await this.loginRemote(challengeId, signature);
         if (remoteResult.success) {
           remoteToken = remoteResult.token;
-          tokenManager.setRemoteToken(remoteToken!, address);
         } else {
           errors.push(`Remote login failed: ${remoteResult.error}`);
         }
       }
 
-      if (localAuthenticated || remoteToken) {
+      if (localAuthenticated && (nonceSource !== "remote" || remoteToken)) {
+        tokenManager.setToken("authenticated", address);
+        if (remoteToken) {
+          tokenManager.setRemoteToken(remoteToken, address);
+        }
         return {
           success: true,
           remoteToken,
@@ -198,7 +207,7 @@ export class SiweService {
   }
 
   private async loginRemote(
-    message: string,
+    challengeId: string | undefined,
     signature: string
   ): Promise<{ success: boolean; token?: string; error?: string }> {
     const endpoint = degovGraphqlApi();
@@ -206,9 +215,13 @@ export class SiweService {
       return { success: false, error: "Remote API endpoint not configured" };
     }
 
+    if (!challengeId) {
+      return { success: false, error: "Remote challenge ID is missing" };
+    }
+
     const loginMutation = `
-      mutation Login($input: LoginInput!) {
-        login(input: $input) {
+      mutation VerifyAuthChallenge($input: VerifyAuthChallengeInput!) {
+        verifyAuthChallenge(input: $input) {
           token
         }
       }
@@ -224,8 +237,8 @@ export class SiweService {
           query: loginMutation,
           variables: {
             input: {
+              challengeId,
               signature,
-              message,
             },
           },
         }),
@@ -234,8 +247,11 @@ export class SiweService {
 
       const result = await response.json();
 
-      if (result.data?.login?.token) {
-        return { success: true, token: result.data.login.token };
+      if (result.data?.verifyAuthChallenge?.token) {
+        return {
+          success: true,
+          token: result.data.verifyAuthChallenge.token,
+        };
       }
 
       return {
@@ -282,8 +298,10 @@ export class SiweService {
     try {
       const { address, chainId, signMessageAsync } = params;
 
-      const { nonce, source } = await this.getNonce();
-      const message = this.createMessage({ address, nonce, chainId });
+      const { nonce, source, challengeId, message: remoteMessage } =
+        await this.getNonce({ address, chainId });
+      const message =
+        remoteMessage ?? this.createMessage({ address, nonce, chainId });
       const signature = await signMessageAsync({ message });
 
       return await this.verifySignature({
@@ -291,6 +309,7 @@ export class SiweService {
         signature,
         address,
         nonceSource: source,
+        challengeId,
       });
     } catch (error) {
       const errorMessage =
