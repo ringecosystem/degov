@@ -22,12 +22,11 @@ jobs:
           const rootPkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
           const webPkg = JSON.parse(fs.readFileSync("packages/web/package.json", "utf8"));
           webPkg.packageManager = rootPkg.packageManager;
-          webPkg.pnpm = rootPkg.pnpm;
           fs.writeFileSync("packages/web/package.json", `${JSON.stringify(webPkg, null, 2)}\n`);
           NODE
           cp -a apps/web/. .
           cp packages/web/package.json package.json
-          rm -f pnpm-workspace.yaml
+          sed -i 's|  - "apps/web"|  - "."|' pnpm-workspace.yaml
           cat > vercel.json <<'EOF'
           {
             "installCommand": "pnpm install --no-frozen-lockfile",
