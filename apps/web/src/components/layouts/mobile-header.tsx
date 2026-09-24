@@ -1,13 +1,12 @@
 "use client";
 import { Menu, Search } from "lucide-react";
-import Image from "next/image";
 import { useTranslations } from "next-intl";
 import React, { useMemo } from "react";
 
 import { AppIcon, LogoIcon } from "@/components/icons";
 import { SearchModal } from "@/components/search-modal";
+import { ThemedLogo } from "@/components/themed-logo";
 import { DEGOV_APPS_URL } from "@/config/base";
-import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { Link } from "@/i18n/navigation";
 
@@ -19,8 +18,6 @@ export const MobileHeader = () => {
   const config = useDaoConfig();
   const tSearch = useTranslations("common.search");
   const tMenu = useTranslations("common.menu");
-
-  const { isDarkTheme } = useCustomTheme();
 
   const isCustomLogo = useMemo(() => {
     return !!config?.theme?.logoDark && !!config?.theme?.logoLight;
@@ -37,16 +34,12 @@ export const MobileHeader = () => {
           <div className="flex items-center gap-[10px]">
             <Link href="/">
               {isCustomLogo ? (
-                <Image
-                  src={
-                    isDarkTheme
-                      ? config?.theme?.logoDark ?? ""
-                      : config?.theme?.logoLight ?? ""
-                  }
+                <ThemedLogo
+                  logoDark={config?.theme?.logoDark ?? ""}
+                  logoLight={config?.theme?.logoLight ?? ""}
                   alt="logo"
                   width={128}
                   height={26}
-                  priority
                   className="h-[26px] w-[128px] rounded-full border border-(--card-background)"
                 />
               ) : (

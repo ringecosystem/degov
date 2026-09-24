@@ -16,6 +16,7 @@ import { toHex } from "viem";
 import { useAccount } from "wagmi";
 
 import { PlusIcon } from "@/components/icons";
+import { ProposalDraftPicker } from "@/components/proposal-draft-picker";
 import type { SuccessType } from "@/components/transaction-toast";
 import { TransactionToast } from "@/components/transaction-toast";
 import { Button } from "@/components/ui/button";
@@ -32,12 +33,10 @@ import { useProposal } from "@/hooks/useProposal";
 import { useProposalDraftAutosave } from "@/hooks/useProposalDraftAutosave";
 import {
   useProposalDraft,
-  useProposalDrafts,
 } from "@/hooks/useProposalDrafts";
 import { useUnsavedChangesAlert } from "@/hooks/useUnsavedChangesAlert";
 import { Link, useRouter } from "@/i18n/navigation";
 import type { ProposalDraft } from "@/services/graphql/types/proposal-drafts";
-import { formatTimeAgo } from "@/utils/date";
 import {
   hasMeaningfulProposalDraftContent,
   parseProposalDraftDocument,
@@ -124,6 +123,7 @@ function ProposalEditor({
     initialDocument?.activeActionId ?? initialActions[0]?.id ?? null;
   const [actions, setActions] = useImmer<Action[]>(initialActions);
   const [publishLoading, setPublishLoading] = useState(false);
+  const [draftPickerOpen, setDraftPickerOpen] = useState(false);
   const [actionUuid, setActionUuid] = useState<string | null>(initialActionId);
   const [hash, setHash] = useState<string | null>(null);
   const [tab, setTab] = useState<"edit" | "add" | "preview">(
@@ -187,7 +187,7 @@ function ProposalEditor({
     onSaved: handleDraftSaved,
   });
 
-  const { resetChanges } = useUnsavedChangesAlert({
+  const { hasChanges, resetChanges } = useUnsavedChangesAlert({
     hasChanges: currentPayload !== savedBaseline,
     message: t("unsavedChanges"),
   });
@@ -195,6 +195,20 @@ function ProposalEditor({
   const { createProposal, isPending, proposalId } = useProposal();
 
   const { isLoading } = useMyVotes();
+
+  const handleSwitchDraft = useCallback(
+    (draftId: string) => {
+      if (draftId === initialDraft?.id) {
+        setDraftPickerOpen(false);
+        return;
+      }
+      if (hasChanges && !window.confirm(t("switchDraftConfirm"))) return;
+      resetChanges();
+      setDraftPickerOpen(false);
+      router.push(`/proposals/new?draft=${draftId}`);
+    },
+    [hasChanges, initialDraft?.id, resetChanges, router, t]
+  );
 
   const handleProposalContentChange = useCallback(
     (content: ProposalContent) => {
@@ -403,7 +417,7 @@ function ProposalEditor({
   return (
     <WithConnect>
       <div className="flex flex-col gap-[20px] p-[30px]">
-        <header className="flex items-center justify-between">
+        <header className="flex flex-wrap items-start justify-between gap-[12px]">
           <div>
             <div className="flex flex-wrap items-center gap-[10px]">
               <h2 className="text-2xl font-semibold">{t("title")}</h2>
@@ -445,29 +459,41 @@ function ProposalEditor({
               </div>
             )}
           </div>
-          {actions.length === 0 ||
-          [...validationState.values()].some((v) => !v) ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <PublishButton
-                    disabled
-                    isLoading={publishLoading || isPending}
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>{t("fixErrors")}</TooltipContent>
-            </Tooltip>
-          ) : (
-            <Button
-              className="gap-[5px] rounded-[100px]"
-              onClick={handlePublish}
-              isLoading={publishLoading || isPending || isLoading}
-            >
-              <PlusIcon width={16} height={16} className="text-current" />
-              <span>{t("publish")}</span>
-            </Button>
-          )}
+          <div className="flex items-center gap-[8px]">
+            {syncEnabled && (
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-[100px]"
+                onClick={() => setDraftPickerOpen(true)}
+              >
+                {t("switchDraft")}
+              </Button>
+            )}
+            {actions.length === 0 ||
+            [...validationState.values()].some((v) => !v) ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <PublishButton
+                      disabled
+                      isLoading={publishLoading || isPending}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>{t("fixErrors")}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                className="gap-[5px] rounded-[100px]"
+                onClick={handlePublish}
+                isLoading={publishLoading || isPending || isLoading}
+              >
+                <PlusIcon width={16} height={16} className="text-current" />
+                <span>{t("publish")}</span>
+              </Button>
+            )}
+          </div>
         </header>
 
         <div className="flex gap-[30px] flex-col lg:flex-row">
@@ -551,6 +577,13 @@ function ProposalEditor({
           onSuccess={handlePublishSuccess}
         />
       )}
+      {syncEnabled && (
+        <ProposalDraftPicker
+          open={draftPickerOpen}
+          onOpenChange={setDraftPickerOpen}
+          onSelect={handleSwitchDraft}
+        />
+      )}
     </WithConnect>
   );
 }
@@ -575,7 +608,6 @@ export default function NewProposal() {
   const [authReady, setAuthReady] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
   const [continueUnsynced, setContinueUnsynced] = useState(false);
-  const [startFresh, setStartFresh] = useState(false);
   const attemptedAddressRef = useRef<string | null>(null);
 
   const draftsEnabled = isProposalFeatureEnabled(
@@ -606,18 +638,10 @@ export default function NewProposal() {
     isConnected,
   ]);
 
-  const draftsQuery = useProposalDrafts(
-    daoConfig?.code ?? "",
-    draftsEnabled && authReady && !draftId
-  );
   const draftQuery = useProposalDraft(
     daoConfig?.code ?? "",
     draftId,
     draftsEnabled && authReady && Boolean(draftId)
-  );
-  const recentDrafts = useMemo(
-    () => draftsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [draftsQuery.data]
   );
   const parsedDraft = useMemo(() => {
     const draft = draftQuery.data;
@@ -707,6 +731,7 @@ export default function NewProposal() {
     }
     return (
       <ProposalEditor
+        key={draftId}
         initialDraft={draftQuery.data}
         initialDocument={parsedDraft}
         syncEnabled
@@ -714,76 +739,5 @@ export default function NewProposal() {
     );
   }
 
-  if (draftsQuery.isLoading) {
-    return (
-      <DraftGate>
-        <div className="w-full text-center text-muted-foreground">
-          {t("loadingDrafts")}
-        </div>
-      </DraftGate>
-    );
-  }
-
-  if (draftsQuery.isError) {
-    return (
-      <DraftGate>
-        <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
-          <h2 className="text-[20px] font-semibold">
-            {t("draftSyncUnavailable")}
-          </h2>
-          <p className="mt-[8px] text-[14px] text-muted-foreground">
-            {t("draftSyncUnavailableDescription")}
-          </p>
-          <div className="mt-[20px] flex gap-[10px]">
-            <Button onClick={() => draftsQuery.refetch()}>{t("retry")}</Button>
-            <Button
-              variant="outline"
-              onClick={() => setContinueUnsynced(true)}
-            >
-              {t("continueWithoutSync")}
-            </Button>
-          </div>
-        </div>
-      </DraftGate>
-    );
-  }
-
-  if (recentDrafts.length > 0 && !startFresh) {
-    return (
-      <DraftGate>
-        <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
-          <h2 className="text-[20px] font-semibold">{t("continueDraft")}</h2>
-          <p className="mt-[8px] text-[14px] text-muted-foreground">
-            {t("continueDraftDescription")}
-          </p>
-          <div className="mt-[20px] divide-y divide-border/30">
-            {recentDrafts.slice(0, 3).map((draft) => (
-              <Link
-                key={draft.id}
-                href={`/proposals/new?draft=${draft.id}`}
-                className="flex items-center justify-between gap-[20px] py-[14px] hover:opacity-70"
-              >
-                <span className="min-w-0 truncate font-medium">
-                  {draft.title}
-                </span>
-                <span className="shrink-0 text-[12px] text-muted-foreground">
-                  {formatTimeAgo(String(new Date(draft.utime).getTime()))}
-                </span>
-              </Link>
-            ))}
-          </div>
-          <div className="mt-[20px] flex flex-wrap gap-[10px]">
-            <Button onClick={() => setStartFresh(true)}>
-              {t("startNewProposal")}
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/proposals/drafts">{t("viewAllDrafts")}</Link>
-            </Button>
-          </div>
-        </div>
-      </DraftGate>
-    );
-  }
-
-  return <ProposalEditor syncEnabled />;
+  return <ProposalEditor key="new" syncEnabled />;
 }

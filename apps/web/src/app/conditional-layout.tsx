@@ -28,5 +28,5 @@ export function ConditionalLayout({
   }
 
   // Use device router to render appropriate layout
-  return <DeviceRouter banner={banner}>{children}</DeviceRouter>;
+  return <DeviceRouter banner={pathname === "/" ? banner : null}>{children}</DeviceRouter>;
 }

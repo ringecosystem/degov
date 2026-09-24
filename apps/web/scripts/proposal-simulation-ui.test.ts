@@ -14,6 +14,9 @@ test("proposal simulation uses finalized Square endpoints and clears stale resul
   const displaySource = readSource(
     "src/app/proposal/[id]/action-group-display.tsx"
   );
+  const actionGroupSource = readSource(
+    "src/app/proposal/[id]/action-group.tsx"
+  );
 
   assert.match(
     serviceSource,
@@ -39,6 +42,12 @@ test("proposal simulation uses finalized Square endpoints and clears stale resul
   assert.match(hookSource, /canExecute && Boolean\(caller\) && capability\.data\?\.enabled === true/);
   assert.match(displaySource, /canSimulate &&/);
   assert.match(displaySource, /onClick\("simulate"\)/);
+  assert.match(displaySource, /DropdownMenuTrigger/);
+  assert.match(displaySource, /moreExecutionOptions/);
+  assert.doesNotMatch(displaySource, /variant="outline"\s+isLoading=\{isSimulating\}/);
+  assert.match(actionGroupSource, /setSimulationOpen\(true\)/);
+  assert.match(actionGroupSource, /<Dialog open=\{simulationOpen\}/);
+  assert.match(actionGroupSource, /handleAction\("execute"\)/);
   const resultSource = readSource(
     "src/app/proposal/[id]/proposal-simulation-result.tsx"
   );

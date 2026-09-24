@@ -2,22 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
-import { useAccount } from "wagmi";
 
-import { DiscussionIcon, PlusIcon } from "@/components/icons";
+import { DiscussionIcon } from "@/components/icons";
+import { NewProposalEntry } from "@/components/new-proposal-entry";
 import { ProposalsList } from "@/components/proposals-list";
 import { ProposalsTable } from "@/components/proposals-table";
 import { ResponsiveRenderer } from "@/components/responsive-renderer";
 import { Button } from "@/components/ui/button";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
-import { useMyVotes } from "@/hooks/useMyVotes";
-import { Link, useRouter } from "@/i18n/navigation";
-import { isProposalFeatureEnabled } from "@/utils/proposal-features";
-import {
-  degovGraphqlApi,
-  isDegovApiConfiguredClient,
-} from "@/utils/remote-api";
+import { Link } from "@/i18n/navigation";
 
 const Faqs = dynamic(
   () => import("@/components/faqs").then((mod) => mod.Faqs),
@@ -27,36 +20,9 @@ const Faqs = dynamic(
     )
   }
 );
-const NewPublishWarning = dynamic(
-  () =>
-    import("@/components/new-publish-warning").then(
-      (mod) => mod.NewPublishWarning
-    ),
-  { ssr: false }
-);
-
 export const Proposals = () => {
-  const daoConfig = useDaoConfig();
-  const router = useRouter();
   const t = useTranslations("dashboard.proposals");
-  const { isConnected } = useAccount();
-  const showDrafts = isProposalFeatureEnabled(
-    daoConfig,
-    "proposal-drafts",
-    isDegovApiConfiguredClient() ? degovGraphqlApi() : undefined
-  );
-  const [publishWarningOpen, setPublishWarningOpen] = useState(false);
-
-  const { hasEnoughVotes, proposalThreshold, votes } = useMyVotes();
-
-  const handleNewProposalClick = useCallback(() => {
-    if (isConnected && !hasEnoughVotes) {
-      setPublishWarningOpen(true);
-      return;
-    }
-
-    router.push("/proposals/new");
-  }, [isConnected, hasEnoughVotes, router]);
+  const daoConfig = useDaoConfig();
 
   return (
     <div className="flex flex-col gap-[15px] lg:gap-[20px]">
@@ -88,27 +54,18 @@ export const Proposals = () => {
                   </Link>
                 </Button>
               ) : null}
-              {showDrafts && (
-                <Button
-                  variant="outline"
-                  className="rounded-[100px] text-[13px] lg:text-sm"
-                  asChild
-                >
-                  <Link href="/proposals/drafts">{t("drafts")}</Link>
-                </Button>
-              )}
-              <Button
+              <NewProposalEntry
                 className="flex items-center gap-[4px] lg:gap-[5px] rounded-[100px] text-[13px] lg:text-sm"
-                onClick={handleNewProposalClick}
-              >
-                <PlusIcon
-                  width={16}
-                  height={16}
-                  className="size-[16px] lg:size-[20px] text-current"
-                />
-                <span className="hidden sm:inline">{t("newProposal")}</span>
-                <span className="sm:hidden">{t("new")}</span>
-              </Button>
+                iconClassName="size-[16px] lg:size-[20px]"
+                labelClassName="hidden sm:inline"
+                compactLabelClassName="sm:hidden"
+              />
+            </div>
+            <div className="flex lg:hidden">
+              <NewProposalEntry
+                className="flex items-center gap-[5px] rounded-[100px] text-[13px]"
+                iconClassName="size-[16px]"
+              />
             </div>
           </div>
           <ResponsiveRenderer
@@ -118,13 +75,6 @@ export const Proposals = () => {
         </div>
         <Faqs type="general" />
       </div>
-
-      <NewPublishWarning
-        open={publishWarningOpen}
-        onOpenChange={setPublishWarningOpen}
-        proposalThreshold={proposalThreshold}
-        votes={votes}
-      />
     </div>
   );
 };

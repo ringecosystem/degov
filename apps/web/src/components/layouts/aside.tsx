@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/app/nav";
 import { AppIcon, LogoIcon } from "@/components/icons";
 import { IndexerStatus } from "@/components/indexer-status";
+import { ThemedLogo } from "@/components/themed-logo";
 import {
   Tooltip,
   TooltipContent,
@@ -15,7 +16,6 @@ import {
 import { DEGOV_APPS_URL } from "@/config/base";
 import { INDEXER_CONFIG } from "@/config/indexer";
 import { useBlockSync } from "@/hooks/useBlockSync";
-import { useCustomTheme } from "@/hooks/useCustomTheme";
 import { useDaoConfig } from "@/hooks/useDaoConfig";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,6 @@ export const Aside = () => {
     indexedBlock,
     durableProcessedBlock,
   } = useBlockSync();
-  const { isDarkTheme } = useCustomTheme();
 
   useEffect(() => {
     const savedState = localStorage.getItem("sidebar-collapsed");
@@ -107,16 +106,12 @@ export const Aside = () => {
               <div className="flex items-center gap-[10px]">
                 <Link href="/">
                   {isCustomLogo ? (
-                    <Image
-                      src={
-                        isDarkTheme
-                          ? config?.theme?.logoDark ?? ""
-                          : config?.theme?.logoLight ?? ""
-                      }
+                    <ThemedLogo
+                      logoDark={config?.theme?.logoDark ?? ""}
+                      logoLight={config?.theme?.logoLight ?? ""}
                       alt="logo"
                       width={128}
                       height={26}
-                      priority
                       className="h-[26px] w-[128px]"
                     />
                   ) : (
