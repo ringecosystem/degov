@@ -94,6 +94,8 @@
   "actionGroup": {
     "voteOnchain": "Vote Onchain",
     "simulate": "Simulate execution",
+    "simulating": "Simulating…",
+    "moreExecutionOptions": "More execution options",
     "execute": "Execute",
     "queue": "Queue",
     "votingStartsSoon": "Voting starts soon",
@@ -104,6 +106,10 @@
     "proposalDefeated": "Proposal defeated"
   },
   "simulation": {
+    "title": "Simulation result",
+    "description": "Preview the execution outcome before submitting the real transaction.",
+    "running": "Simulating proposal execution…",
+    "execute": "Execute proposal",
     "success": "Success",
     "reverted": "Reverted",
     "limitedFidelity": "Limited fidelity",

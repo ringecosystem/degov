@@ -16,6 +16,7 @@ import { toHex } from "viem";
 import { useAccount } from "wagmi";
 
 import { PlusIcon } from "@/components/icons";
+import { ProposalDraftPicker } from "@/components/proposal-draft-picker";
 import type { SuccessType } from "@/components/transaction-toast";
 import { TransactionToast } from "@/components/transaction-toast";
 import { Button } from "@/components/ui/button";
@@ -122,6 +123,7 @@ function ProposalEditor({
     initialDocument?.activeActionId ?? initialActions[0]?.id ?? null;
   const [actions, setActions] = useImmer<Action[]>(initialActions);
   const [publishLoading, setPublishLoading] = useState(false);
+  const [draftPickerOpen, setDraftPickerOpen] = useState(false);
   const [actionUuid, setActionUuid] = useState<string | null>(initialActionId);
   const [hash, setHash] = useState<string | null>(null);
   const [tab, setTab] = useState<"edit" | "add" | "preview">(
@@ -185,7 +187,7 @@ function ProposalEditor({
     onSaved: handleDraftSaved,
   });
 
-  const { resetChanges } = useUnsavedChangesAlert({
+  const { hasChanges, resetChanges } = useUnsavedChangesAlert({
     hasChanges: currentPayload !== savedBaseline,
     message: t("unsavedChanges"),
   });
@@ -193,6 +195,20 @@ function ProposalEditor({
   const { createProposal, isPending, proposalId } = useProposal();
 
   const { isLoading } = useMyVotes();
+
+  const handleSwitchDraft = useCallback(
+    (draftId: string) => {
+      if (draftId === initialDraft?.id) {
+        setDraftPickerOpen(false);
+        return;
+      }
+      if (hasChanges && !window.confirm(t("switchDraftConfirm"))) return;
+      resetChanges();
+      setDraftPickerOpen(false);
+      router.push(`/proposals/new?draft=${draftId}`);
+    },
+    [hasChanges, initialDraft?.id, resetChanges, router, t]
+  );
 
   const handleProposalContentChange = useCallback(
     (content: ProposalContent) => {
@@ -401,7 +417,7 @@ function ProposalEditor({
   return (
     <WithConnect>
       <div className="flex flex-col gap-[20px] p-[30px]">
-        <header className="flex items-center justify-between">
+        <header className="flex flex-wrap items-start justify-between gap-[12px]">
           <div>
             <div className="flex flex-wrap items-center gap-[10px]">
               <h2 className="text-2xl font-semibold">{t("title")}</h2>
@@ -443,29 +459,41 @@ function ProposalEditor({
               </div>
             )}
           </div>
-          {actions.length === 0 ||
-          [...validationState.values()].some((v) => !v) ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <PublishButton
-                    disabled
-                    isLoading={publishLoading || isPending}
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>{t("fixErrors")}</TooltipContent>
-            </Tooltip>
-          ) : (
-            <Button
-              className="gap-[5px] rounded-[100px]"
-              onClick={handlePublish}
-              isLoading={publishLoading || isPending || isLoading}
-            >
-              <PlusIcon width={16} height={16} className="text-current" />
-              <span>{t("publish")}</span>
-            </Button>
-          )}
+          <div className="flex items-center gap-[8px]">
+            {syncEnabled && (
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-[100px]"
+                onClick={() => setDraftPickerOpen(true)}
+              >
+                {t("switchDraft")}
+              </Button>
+            )}
+            {actions.length === 0 ||
+            [...validationState.values()].some((v) => !v) ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <PublishButton
+                      disabled
+                      isLoading={publishLoading || isPending}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>{t("fixErrors")}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                className="gap-[5px] rounded-[100px]"
+                onClick={handlePublish}
+                isLoading={publishLoading || isPending || isLoading}
+              >
+                <PlusIcon width={16} height={16} className="text-current" />
+                <span>{t("publish")}</span>
+              </Button>
+            )}
+          </div>
         </header>
 
         <div className="flex gap-[30px] flex-col lg:flex-row">
@@ -547,6 +575,13 @@ function ProposalEditor({
         <TransactionToast
           hash={hash as `0x${string}`}
           onSuccess={handlePublishSuccess}
+        />
+      )}
+      {syncEnabled && (
+        <ProposalDraftPicker
+          open={draftPickerOpen}
+          onOpenChange={setDraftPickerOpen}
+          onSelect={handleSwitchDraft}
         />
       )}
     </WithConnect>
@@ -696,6 +731,7 @@ export default function NewProposal() {
     }
     return (
       <ProposalEditor
+        key={draftId}
         initialDraft={draftQuery.data}
         initialDocument={parsedDraft}
         syncEnabled
@@ -703,5 +739,5 @@ export default function NewProposal() {
     );
   }
 
-  return <ProposalEditor syncEnabled />;
+  return <ProposalEditor key="new" syncEnabled />;
 }

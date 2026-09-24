@@ -168,13 +168,17 @@ test("draft UI remains capability gated and private routes are not indexed", () 
   assert.match(robots, /\/proposals\/drafts/);
 });
 
-test("new proposal entry owns the draft choice while the editor has explicit routes", () => {
+test("new proposal entry and editor share an inline draft picker", () => {
   const entry = readFileSync(
     new URL("../src/components/new-proposal-entry.tsx", import.meta.url),
     "utf8"
   );
   const editor = readFileSync(
     new URL("../src/app/proposals/new/page.tsx", import.meta.url),
+    "utf8"
+  );
+  const picker = readFileSync(
+    new URL("../src/components/proposal-draft-picker.tsx", import.meta.url),
     "utf8"
   );
   const dashboard = readFileSync(
@@ -186,17 +190,22 @@ test("new proposal entry owns the draft choice while the editor has explicit rou
     "utf8"
   );
 
-  assert.match(entry, /router\.push\("\/proposals\/drafts"\)/);
+  assert.match(entry, /ProposalDraftPicker/);
+  assert.doesNotMatch(entry, /router\.push\("\/proposals\/drafts"\)/);
   assert.match(entry, /router\.push\("\/proposals\/new"\)/);
+  assert.match(entry, /router\.push\(`\/proposals\/new\?draft=\$\{draftId\}`\)/);
   assert.match(entry, /NewPublishWarning/);
   assert.match(entry, /proposal-drafts/);
-  assert.match(entry, /max-w-\[calc\(100vw-24px\)\]/);
-  assert.match(entry, /aria-label=\{t\("close"\)\}/);
+  assert.match(picker, /useProposalDrafts\(/);
+  assert.match(picker, /drafts\.map\(\(draft\)/);
+  assert.match(picker, /max-w-\[calc\(100vw-24px\)\]/);
+  assert.match(picker, /aria-label=\{t\("close"\)\}/);
   assert.match(dashboard, /NewProposalEntry/);
   assert.match(proposals, /NewProposalEntry/);
   assert.doesNotMatch(dashboard, /href="\/proposals\/drafts"/);
   assert.doesNotMatch(proposals, /href="\/proposals\/drafts"/);
-  assert.doesNotMatch(editor, /useProposalDrafts\(/);
-  assert.doesNotMatch(editor, /recentDrafts/);
-  assert.match(editor, /return <ProposalEditor syncEnabled \/>;/);
+  assert.match(editor, /ProposalDraftPicker/);
+  assert.match(editor, /key=\{draftId\}/);
+  assert.match(editor, /switchDraftConfirm/);
+  assert.match(editor, /return <ProposalEditor key="new" syncEnabled \/>;/);
 });
