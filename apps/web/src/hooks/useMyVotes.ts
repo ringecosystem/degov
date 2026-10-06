@@ -40,7 +40,7 @@ export function useMyVotes(): UseVotesReturn {
       : undefined;
 
   const hasEnoughVotes =
-    votes && governanceParams?.proposalThreshold
+    !isNil(votes) && !isNil(governanceParams?.proposalThreshold)
       ? votes >= governanceParams.proposalThreshold
       : false;
 

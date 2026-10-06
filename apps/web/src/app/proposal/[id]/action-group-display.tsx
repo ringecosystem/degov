@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -7,6 +8,12 @@ import {
   ClockIcon,
 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { VoteType } from "@/config/vote";
 import { ProposalState } from "@/types/proposal";
 
@@ -39,6 +46,63 @@ interface ActionGroupDisplayProps {
   hasTimelock: boolean;
   isSimulating: boolean;
   onClick: (action: "vote" | "queue" | "execute" | "simulate") => void;
+}
+
+function ExecuteAction({
+  canExecute,
+  canSimulate,
+  isLoading,
+  isSimulating,
+  onClick,
+}: Pick<
+  ActionGroupDisplayProps,
+  "canExecute" | "canSimulate" | "isLoading" | "isSimulating" | "onClick"
+>) {
+  const t = useTranslations("proposalDetail.actionGroup");
+
+  return (
+    <div className="flex items-center">
+      <Button
+        className={
+          canSimulate
+            ? "h-[37px] rounded-l-[100px] rounded-r-none focus-visible:ring-0"
+            : "h-[37px] rounded-[100px] focus-visible:ring-0"
+        }
+        isLoading={isLoading}
+        disabled={!canExecute}
+        onClick={() => onClick("execute")}
+      >
+        {t("execute")}
+      </Button>
+      {canSimulate && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              aria-label={t("moreExecutionOptions")}
+              title={t("simulate")}
+              className="h-[37px] w-[38px] rounded-l-none rounded-r-[100px] border-l border-primary-foreground/30 px-0 focus-visible:ring-2"
+              disabled={isLoading}
+            >
+              <ChevronDown aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-[220px] rounded-[14px] border-border/20 bg-card p-[6px]"
+          >
+            <DropdownMenuItem
+              className="cursor-pointer rounded-[10px] p-[10px]"
+              disabled={isSimulating}
+              onSelect={() => onClick("simulate")}
+            >
+              {isSimulating ? t("simulating") : t("simulate")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  );
 }
 export const ActionGroupDisplay = ({
   status,
@@ -91,26 +155,13 @@ export const ActionGroupDisplay = ({
     // If no timelock, show Execute button directly
     if (!hasTimelock) {
       return (
-        <div className="flex items-center gap-[10px]">
-          {canSimulate && (
-            <Button
-              className="h-[37px] rounded-[100px] focus-visible:ring-0"
-              variant="outline"
-              isLoading={isSimulating}
-              onClick={() => onClick("simulate")}
-            >
-              {t("simulate")}
-            </Button>
-          )}
-          <Button
-            className="h-[37px] rounded-[100px] focus-visible:ring-0"
-            isLoading={isLoading}
-            disabled={!canExecute}
-            onClick={() => onClick("execute")}
-          >
-            {t("execute")}
-          </Button>
-        </div>
+        <ExecuteAction
+          canExecute={canExecute}
+          canSimulate={canSimulate}
+          isLoading={isLoading}
+          isSimulating={isSimulating}
+          onClick={onClick}
+        />
       );
     }
 
@@ -127,26 +178,13 @@ export const ActionGroupDisplay = ({
   }
   if (status === ProposalState.Queued) {
     return (
-      <div className="flex items-center gap-[10px]">
-        {canSimulate && (
-          <Button
-            className="h-[37px] rounded-[100px] focus-visible:ring-0"
-            variant="outline"
-            isLoading={isSimulating}
-            onClick={() => onClick("simulate")}
-          >
-            {t("simulate")}
-          </Button>
-        )}
-        <Button
-          className="h-[37px] rounded-[100px] focus-visible:ring-0"
-          isLoading={isLoading}
-          disabled={!canExecute}
-          onClick={() => onClick("execute")}
-        >
-          {t("execute")}
-        </Button>
-      </div>
+      <ExecuteAction
+        canExecute={canExecute}
+        canSimulate={canSimulate}
+        isLoading={isLoading}
+        isSimulating={isSimulating}
+        onClick={onClick}
+      />
     );
   }
   if (status === ProposalState.Executed) {

@@ -4,6 +4,26 @@
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
+.themed-logo {
+  display: inline-grid;
+}
+
+.themed-logo-image {
+  grid-area: 1 / 1;
+}
+
+.themed-logo-dark {
+  display: none;
+}
+
+:is(.dark, .dark-blue, .dark-green, .dark-purple, .dark-red) .themed-logo-light {
+  display: none;
+}
+
+:is(.dark, .dark-blue, .dark-green, .dark-purple, .dark-red) .themed-logo-dark {
+  display: block;
+}
+
 :root {
     /* Light #202224 */
     --light: hsl(210 6% 13%);

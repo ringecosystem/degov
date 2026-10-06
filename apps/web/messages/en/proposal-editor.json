@@ -19,6 +19,8 @@
     "continueDraftDescription": "Choose a recent draft or start a separate proposal.",
     "startNewProposal": "Start new proposal",
     "viewAllDrafts": "View all drafts",
+    "switchDraft": "Switch draft",
+    "switchDraftConfirm": "Switch drafts? Any changes that have not finished saving will be lost.",
     "draftSaveFailed": "Draft save failed.",
     "retryDraftSave": "Retry",
     "draftConflict": "A newer server version exists.",
@@ -33,10 +35,34 @@
       "conflict": "Conflict"
     }
   },
+  "entry": {
+    "newProposal": "New Proposal",
+    "new": "New",
+    "title": "New Proposal",
+    "description": "Choose how you'd like to start.",
+    "createFromDraft": "Create from a draft",
+    "createFromScratch": "Create from scratch",
+    "close": "Close new proposal options",
+    "votingPowerUnavailable": "Voting power could not be verified. Please try again.",
+    "retry": "Retry"
+  },
+  "draftPicker": {
+    "title": "Choose a draft",
+    "description": "Open a saved draft, or start with a blank proposal.",
+    "close": "Close draft picker",
+    "loading": "Loading your drafts…",
+    "loadFailed": "Drafts could not be loaded.",
+    "empty": "You don't have any saved drafts yet.",
+    "updated": "Updated {time}",
+    "open": "Open",
+    "startNew": "Start a blank proposal",
+    "retry": "Retry"
+  },
   "drafts": {
     "title": "Proposal drafts",
     "description": "Private-to-your-wallet working copies stored by Square.",
     "newProposal": "New proposal",
+    "createFromScratch": "Create from scratch",
     "loading": "Loading drafts…",
     "authFailed": "Sign in to Square to view your drafts.",
     "loadFailed": "Drafts could not be loaded.",
