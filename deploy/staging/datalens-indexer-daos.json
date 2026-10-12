@@ -21,10 +21,10 @@
     "tokenEnv": "DATALENS_TOKEN",
     "applicationEnv": "DATALENS_APPLICATION",
     "application": "degov-staging",
-    "dataset": {
-      "family": "evm",
-      "name": "logs"
-    }
+    "dataset": "evm.logs",
+    "realtimeApplication": "degov-realtime",
+    "realtimeApplicationEnv": "DEGOV_REALTIME_DATALENS_APPLICATION",
+    "realtimeTokenEnv": "DEGOV_REALTIME_DATALENS_TOKEN"
   },
   "database": {
     "urlEnv": "DEGOV_INDEXER_DATABASE_URL",
@@ -46,9 +46,8 @@
     "DEGOV_INDEXER_POLL_INTERVAL_MS": 10000,
     "DATALENS_APPLICATION": "degov-staging",
     "DATALENS_FINALITY": "durable_only",
-    "DATALENS_DATASET_FAMILY": "evm",
-    "DATALENS_DATASET_NAME": "logs",
-    "DATALENS_QUERY_BLOCK_RANGE_LIMIT": 1000
+    "DATALENS_QUERY_BLOCK_RANGE_LIMIT": 1000,
+    "DEGOV_REALTIME_DATALENS_APPLICATION": "degov-realtime"
   },
   "graphql": {
     "endpointEnv": "DEGOV_INDEXER_GRAPHQL_ENDPOINT",

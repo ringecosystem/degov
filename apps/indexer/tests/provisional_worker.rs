@@ -5,10 +5,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
-    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig, DatalensError,
-    DatalensFinality, DatalensProvisionalCacheSegment, DatalensProvisionalFinality,
+    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DaoLogRequest, DatalensConfig,
+    DatalensError, DatalensFinality, DatalensProvisionalCacheSegment, DatalensProvisionalFinality,
     DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult,
     DatalensProvisionalSegmentStore, DatalensProvisionalSegmentWrite, DatasetKeyConfig,
     GovernanceTokenStandard, IndexerCheckpointIdentity, PostgresProvisionalCleanupStore,
@@ -35,6 +34,7 @@ fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
         Ok(DatalensProvisionalLogQueryResult {
             rows: serde_json::json!([]),
             segments: vec![cache_segment("provider", "latest", 100, 105)],
+            rollback_from: None,
         }),
         Ok(DatalensProvisionalLogQueryResult::rows_only(
             serde_json::json!([]),
@@ -52,7 +52,7 @@ fn test_provisional_worker_writes_segments_without_final_checkpoint_boundary() {
         reader
             .calls
             .iter()
-            .all(|call| call.finality.as_deref() == Some("safe_to_latest"))
+            .all(|call| call.finality == "latest_only")
     );
     assert_eq!(store.writes.len(), 1);
     assert_eq!(store.writes[0].segment_finality, "latest");
@@ -65,6 +65,7 @@ fn test_provisional_worker_writes_proposal_overlay_from_provisional_rows() {
         Ok(DatalensProvisionalLogQueryResult {
             rows: serde_json::json!([proposal_created_log_row(104),]),
             segments: vec![cache_segment("provider", "latest", 100, 105)],
+            rollback_from: None,
         }),
         Ok(DatalensProvisionalLogQueryResult::rows_only(
             serde_json::json!([]),
@@ -100,6 +101,7 @@ fn test_provisional_worker_writes_vote_overlay_from_provisional_rows() {
         Ok(DatalensProvisionalLogQueryResult {
             rows: serde_json::json!([vote_cast_log_row(104),]),
             segments: vec![cache_segment("provider", "latest", 100, 105)],
+            rollback_from: None,
         }),
         Ok(DatalensProvisionalLogQueryResult::rows_only(
             serde_json::json!([]),
@@ -138,6 +140,7 @@ fn test_provisional_worker_writes_proposal_event_overlay_from_provisional_rows()
         Ok(DatalensProvisionalLogQueryResult {
             rows: serde_json::json!([proposal_queued_log_row(104),]),
             segments: vec![cache_segment("provider", "latest", 100, 105)],
+            rollback_from: None,
         }),
         Ok(DatalensProvisionalLogQueryResult::rows_only(
             serde_json::json!([]),
@@ -182,6 +185,48 @@ fn test_provisional_cleanup_planner_finalizes_latest_segment_after_safe_checkpoi
     );
 
     assert_eq!(decision, ProvisionalSegmentCleanupDecision::Finalize);
+}
+
+#[test]
+fn test_provisional_worker_rolls_back_then_rewrites_after_anchor_change() {
+    let config = datalens_config();
+    let results = vec![
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([proposal_created_log_row(104)]),
+            segments: vec![cache_segment("hot", "unsafe", 100, 105)],
+            rollback_from: Some(100),
+        }),
+        Ok(DatalensProvisionalLogQueryResult {
+            rows: serde_json::json!([proposal_created_log_row(104)]),
+            segments: vec![cache_segment("hot", "unsafe", 100, 105)],
+            rollback_from: None,
+        }),
+    ];
+    let mut reader = MockProvisionalReader::new(results);
+    let mut store = RecordingProvisionalStore::default();
+    let mut worker = ProvisionalWorker::new(options(&config), &mut reader, &mut store);
+
+    let report = worker.run_once().expect("worker rewrites after rollback");
+
+    assert_eq!(store.rollbacks, vec![100]);
+    assert_eq!(reader.calls.len(), 2);
+    assert_eq!(report.segments_written, 1);
+    assert_eq!(report.proposal_overlays_written, 1);
+}
+
+#[test]
+fn test_provisional_cleanup_planner_rejects_unknown_finality() {
+    let decision = plan_provisional_segment_cleanup(
+        110,
+        &ProvisionalSegmentCleanupCandidate {
+            range_start_block: 100,
+            range_end_block: 105,
+            segment_finality: "reorged".to_owned(),
+            anchor_block_number: Some(105),
+        },
+    );
+
+    assert_eq!(decision, ProvisionalSegmentCleanupDecision::Invalid);
 }
 
 #[test]
@@ -563,6 +608,49 @@ async fn test_postgres_cleanup_scopes_by_contract_set_chain_and_dao() -> Result<
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_postgres_cleanup_marks_invalid_promotion_instead_of_finalizing()
+-> Result<(), Box<dyn Error>> {
+    let database = TestDatabase::connect().await?;
+
+    apply_migrations(&database.pool).await?;
+    insert_checkpoint_at(&database.pool, 110).await?;
+    sqlx::query(
+        "INSERT INTO degov_provisional_segment (
+             id, dao_code, contract_set_id, chain_id, chain_name, dataset_key, selector,
+             range_start_block, range_end_block, segment_finality, source, status,
+             anchor_block_number
+         )
+         VALUES (
+             'invalid-promotion', 'demo-dao', 'demo-set', 1, 'ethereum', 'evm.logs', 'selector',
+             100, 105, 'reorged', 'hot', 'available', 105
+         )",
+    )
+    .execute(&database.pool)
+    .await?;
+    let cleanup_store = PostgresProvisionalCleanupStore::new(database.pool.clone());
+
+    let report = cleanup_store
+        .cleanup_finalized_provisional_overlays(
+            &checkpoint_identity("demo-dao", "demo-set", 1),
+            None,
+        )
+        .await
+        .expect("cleanup succeeds");
+
+    assert_eq!(report.segments_marked_finalized, 0);
+    let (status, error): (String, Option<String>) = sqlx::query_as(
+        "SELECT status, error FROM degov_provisional_segment WHERE id = 'invalid-promotion'",
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    assert_eq!(status, "invalid");
+    assert_eq!(error.as_deref(), Some("promotion invalid"));
+    database.cleanup().await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_postgres_cleanup_is_idempotent() -> Result<(), Box<dyn Error>> {
     let database = TestDatabase::connect().await?;
 
@@ -602,6 +690,7 @@ struct RecordingProvisionalStore {
     proposal_writes: Vec<ProvisionalProposalOverlayWrite>,
     proposal_event_writes: Vec<ProvisionalProposalEventOverlayWrite>,
     vote_writes: Vec<ProvisionalVoteCastGroupOverlayWrite>,
+    rollbacks: Vec<u64>,
 }
 
 impl DatalensProvisionalSegmentStore for RecordingProvisionalStore {
@@ -612,6 +701,16 @@ impl DatalensProvisionalSegmentStore for RecordingProvisionalStore {
         segments: &[DatalensProvisionalSegmentWrite],
     ) -> Result<(), Self::Error> {
         self.writes.extend_from_slice(segments);
+        Ok(())
+    }
+
+    fn rollback_provisional_from(
+        &mut self,
+        _scope: &degov_datalens_indexer::ProvisionalRollbackScope,
+        from_block: u64,
+        _reason: &str,
+    ) -> Result<(), Self::Error> {
+        self.rollbacks.push(from_block);
         Ok(())
     }
 }
@@ -646,7 +745,7 @@ impl ProvisionalVoteOverlayStore for RecordingProvisionalStore {
 }
 
 struct MockProvisionalReader {
-    calls: Vec<QueryInput>,
+    calls: Vec<DaoLogRequest>,
     results: Vec<Result<DatalensProvisionalLogQueryResult, DatalensError>>,
 }
 
@@ -662,9 +761,9 @@ impl MockProvisionalReader {
 impl DatalensProvisionalLogQueryReader for MockProvisionalReader {
     fn query_provisional_logs(
         &mut self,
-        input: QueryInput,
+        request: &DaoLogRequest,
     ) -> Result<DatalensProvisionalLogQueryResult, DatalensError> {
-        self.calls.push(input);
+        self.calls.push(request.clone());
         self.results.remove(0)
     }
 }
@@ -950,7 +1049,7 @@ fn options(config: &DatalensConfig) -> ProvisionalWorkerOptions {
         contract_set_id: "demo-set".to_owned(),
         chain_id: 1,
         chain_name: "ethereum".to_owned(),
-        finality: DatalensProvisionalFinality::SafeToLatest,
+        finality: DatalensProvisionalFinality::LatestOnly,
         from_block: 100,
         to_block: 105,
     }
@@ -975,7 +1074,6 @@ fn datalens_config() -> DatalensConfig {
         query_limits: QueryLimitConfig {
             block_range_limit: 1_000,
         },
-        warmup: Default::default(),
         dao_contracts: None,
         chains: Vec::new(),
     }

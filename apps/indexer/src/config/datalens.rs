@@ -3,10 +3,7 @@ use std::{fmt, str::FromStr, time::Duration};
 use datalens_sdk::ClientConfig;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    ConfigError, DaoContractAddresses, GovernanceTokenStandard,
-    datalens::warmup::{DatalensWarmupConfig, DatalensWarmupKind},
-};
+use crate::{ConfigError, DaoContractAddresses, GovernanceTokenStandard};
 
 mod env;
 
@@ -18,7 +15,6 @@ pub const DEFAULT_DATALENS_CHAIN_ID: i32 = 1;
 pub const DEFAULT_DATALENS_DATASET_FAMILY: &str = "evm";
 pub const DEFAULT_DATALENS_DATASET_NAME: &str = "logs";
 pub const DEFAULT_DATALENS_QUERY_BLOCK_RANGE_LIMIT: u32 = 1_000;
-pub const DEGOV_DATALENS_USER_AGENT: &str = "degov-datalens-indexer";
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct SecretString(String);
@@ -30,10 +26,6 @@ impl SecretString {
 
     pub fn expose_secret(&self) -> &str {
         &self.0
-    }
-
-    fn into_inner(self) -> String {
-        self.0
     }
 }
 
@@ -79,14 +71,12 @@ impl FromStr for DatalensFinality {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DatalensProvisionalFinality {
-    SafeToLatest,
     LatestOnly,
 }
 
 impl DatalensProvisionalFinality {
     pub fn as_datalens_value(self) -> &'static str {
         match self {
-            Self::SafeToLatest => "safe_to_latest",
             Self::LatestOnly => "latest_only",
         }
     }
@@ -97,11 +87,10 @@ impl FromStr for DatalensProvisionalFinality {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim() {
-            "safe_to_latest" => Ok(Self::SafeToLatest),
             "latest_only" => Ok(Self::LatestOnly),
             value => Err(ConfigError::InvalidField {
                 field: "DEGOV_PROVISIONAL_FINALITY".to_owned(),
-                reason: format!("expected safe_to_latest or latest_only, got {value}"),
+                reason: format!("expected latest_only, got {value}"),
             }),
         }
     }
@@ -208,7 +197,6 @@ pub struct DatalensConfig {
     pub chain: ChainIdentityConfig,
     pub dataset: DatasetKeyConfig,
     pub query_limits: QueryLimitConfig,
-    pub warmup: DatalensWarmupConfig,
     pub dao_contracts: Option<DaoContractAddresses>,
     pub chains: Vec<DatalensChainConfig>,
 }
@@ -223,13 +211,7 @@ struct RawDatalensConfig {
     datalens_chain_family: String,
     datalens_chain_name: String,
     datalens_chain_id: Option<i32>,
-    datalens_dataset_family: String,
-    datalens_dataset_name: String,
     datalens_query_block_range_limit: u32,
-    datalens_warmup_enabled: bool,
-    datalens_warmup_ensure_on_startup: bool,
-    datalens_warmup_required: bool,
-    datalens_warmup_kind: String,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
     datalens_governor_token_standard: Option<String>,
@@ -277,13 +259,7 @@ impl Default for RawDatalensConfig {
             datalens_chain_family: DEFAULT_DATALENS_CHAIN_FAMILY.as_datalens_value().to_owned(),
             datalens_chain_name: DEFAULT_DATALENS_CHAIN_NAME.to_owned(),
             datalens_chain_id: Some(DEFAULT_DATALENS_CHAIN_ID),
-            datalens_dataset_family: DEFAULT_DATALENS_DATASET_FAMILY.to_owned(),
-            datalens_dataset_name: DEFAULT_DATALENS_DATASET_NAME.to_owned(),
             datalens_query_block_range_limit: DEFAULT_DATALENS_QUERY_BLOCK_RANGE_LIMIT,
-            datalens_warmup_enabled: DatalensWarmupConfig::default().enabled,
-            datalens_warmup_ensure_on_startup: DatalensWarmupConfig::default().ensure_on_startup,
-            datalens_warmup_required: DatalensWarmupConfig::default().required,
-            datalens_warmup_kind: DatalensWarmupKind::default().as_str().to_owned(),
             datalens_governor_address: None,
             datalens_governor_token_address: None,
             datalens_governor_token_standard: None,
@@ -305,13 +281,13 @@ impl DatalensConfig {
     }
 
     pub fn sdk_config(&self) -> ClientConfig {
-        ClientConfig {
-            endpoint: self.endpoint.trim_end_matches('/').to_owned(),
-            bearer_token: Some(self.bearer_token.clone().into_inner()),
-            application: Some(self.application.clone()),
-            timeout: Some(self.timeout),
-            user_agent: Some(DEGOV_DATALENS_USER_AGENT.to_owned()),
-        }
+        let mut config = ClientConfig::new(
+            self.endpoint.trim_end_matches('/'),
+            self.application.clone(),
+            self.bearer_token.expose_secret(),
+        );
+        config.timeout = self.timeout;
+        config
     }
 
     pub fn select_contract_set(
@@ -533,17 +509,11 @@ impl DatalensConfig {
             finality: raw.datalens_finality.parse()?,
             chain,
             dataset: DatasetKeyConfig {
-                family: non_empty("DATALENS_DATASET_FAMILY", raw.datalens_dataset_family)?,
-                name: non_empty("DATALENS_DATASET_NAME", raw.datalens_dataset_name)?,
+                family: DEFAULT_DATALENS_DATASET_FAMILY.to_owned(),
+                name: DEFAULT_DATALENS_DATASET_NAME.to_owned(),
             },
             query_limits: QueryLimitConfig {
                 block_range_limit: raw.datalens_query_block_range_limit,
-            },
-            warmup: DatalensWarmupConfig {
-                enabled: raw.datalens_warmup_enabled,
-                ensure_on_startup: raw.datalens_warmup_ensure_on_startup,
-                required: raw.datalens_warmup_required,
-                kind: raw.datalens_warmup_kind.parse()?,
             },
             dao_contracts,
             chains,

@@ -12,9 +12,10 @@ async-graphql-axum = "7.2.1"
 axum = "0.8.9"
 clap = { version = "4.6.1", features = ["derive"] }
 config = { version = "0.15.23", default-features = false, features = ["yaml", "json", "toml"] }
-datalens-sdk = { git = "https://github.com/ringecosystem/datalens", rev = "4eb2c85aa725a2141dd2fa5ae34a02da9043707c" }
+datalens-sdk = { git = "https://github.com/ringecosystem/datalens", rev = "85482d47d0e67995e9085daeae7618225bba1817" }
 ethabi = "18.0.0"
 figment = { version = "0.10.19", features = ["env"] }
+futures = "0.3.31"
 hex = "0.4.3"
 log = "0.4.30"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "rustls"] }

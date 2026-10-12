@@ -1,10 +1,10 @@
 use std::fmt;
 use std::time::Duration;
 
-use datalens_sdk::native::QuerySelectorInput;
 use sha3::{Digest, Keccak256};
 
 use crate::IndexerCheckpointIdentity;
+use crate::datalens::planner::DaoLogRequest;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatalensLogQueryCacheOutcome {
@@ -82,10 +82,37 @@ fn range_count(cache: &serde_json::Value, field: &str) -> Option<usize> {
         .map(Vec::len)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DatalensServe {
+    ThroughRequest,
+    ThroughBlock(u64),
+    Nothing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DatalensIncomplete {
+    Pending,
+    NotFollowedYet,
+    ProviderError,
+    BudgetExhausted,
+}
+
+impl DatalensIncomplete {
+    pub fn waits(self) -> bool {
+        matches!(self, Self::Pending | Self::NotFollowedYet)
+    }
+
+    pub fn backs_off(self) -> bool {
+        matches!(self, Self::ProviderError | Self::BudgetExhausted)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct DatalensLogQueryResult {
     pub rows: serde_json::Value,
     pub cache: DatalensLogQueryCacheSummary,
+    pub serve: DatalensServe,
+    pub incomplete: Option<DatalensIncomplete>,
 }
 
 impl DatalensLogQueryResult {
@@ -93,12 +120,14 @@ impl DatalensLogQueryResult {
         Self {
             rows,
             cache: DatalensLogQueryCacheSummary::unavailable(),
+            serve: DatalensServe::ThroughRequest,
+            incomplete: None,
         }
     }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct DatalensWarmupEffectivenessAggregation {
+pub struct DatalensQueryEffectivenessAggregation {
     pub query_count: usize,
     pub full_hit_count: usize,
     pub partial_hit_count: usize,
@@ -112,7 +141,7 @@ pub struct DatalensWarmupEffectivenessAggregation {
     query_duration_total: Duration,
 }
 
-impl DatalensWarmupEffectivenessAggregation {
+impl DatalensQueryEffectivenessAggregation {
     pub fn new() -> Self {
         Self::default()
     }
@@ -167,7 +196,7 @@ impl DatalensWarmupEffectivenessAggregation {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DatalensWarmupEffectivenessLogFields {
+pub struct DatalensQueryEffectivenessLogFields {
     pub dao_code: String,
     pub chain_id: i32,
     pub contract_set_id: String,
@@ -186,13 +215,13 @@ pub struct DatalensWarmupEffectivenessLogFields {
     pub query_duration_max_ms: Option<u128>,
 }
 
-impl DatalensWarmupEffectivenessLogFields {
+impl DatalensQueryEffectivenessLogFields {
     pub fn from_aggregation(
         identity: &IndexerCheckpointIdentity,
         selector_fingerprint: impl Into<String>,
         current_checkpoint: Option<i64>,
         query_watermark: Option<i64>,
-        aggregation: &DatalensWarmupEffectivenessAggregation,
+        aggregation: &DatalensQueryEffectivenessAggregation,
     ) -> Self {
         Self {
             dao_code: identity.dao_code.clone(),
@@ -215,8 +244,8 @@ impl DatalensWarmupEffectivenessLogFields {
     }
 }
 
-pub fn datalens_selector_fingerprint(selector: &QuerySelectorInput) -> String {
-    let bytes = serde_json::to_vec(selector).unwrap_or_default();
+pub fn datalens_selector_fingerprint(request: &DaoLogRequest) -> String {
+    let bytes = serde_json::to_vec(&request.selector_json()).unwrap_or_default();
     let digest = Keccak256::digest(bytes);
     hex::encode(digest)
 }

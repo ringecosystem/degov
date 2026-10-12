@@ -21,13 +21,7 @@ struct RawDatalensEnvOverlay {
     datalens_chain_family: Option<String>,
     datalens_chain_name: Option<String>,
     datalens_chain_id: Option<i32>,
-    datalens_dataset_family: Option<String>,
-    datalens_dataset_name: Option<String>,
     datalens_query_block_range_limit: Option<u32>,
-    datalens_warmup_enabled: Option<bool>,
-    datalens_warmup_ensure_on_startup: Option<bool>,
-    datalens_warmup_required: Option<bool>,
-    datalens_warmup_kind: Option<String>,
     datalens_governor_address: Option<String>,
     datalens_governor_token_address: Option<String>,
     datalens_governor_token_standard: Option<String>,
@@ -54,9 +48,7 @@ struct RawDatalensFileConfig {
     chain_family: Option<String>,
     chain_name: Option<String>,
     chain_id: Option<i32>,
-    dataset: Option<RawDatalensDatasetFileConfig>,
     query_limits: Option<RawDatalensQueryLimitFileConfig>,
-    warmup: Option<RawDatalensWarmupFileConfig>,
     governor_address: Option<String>,
     governor_token_address: Option<String>,
     governor_token_standard: Option<String>,
@@ -65,24 +57,8 @@ struct RawDatalensFileConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RawDatalensDatasetFileConfig {
-    family: Option<String>,
-    name: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct RawDatalensQueryLimitFileConfig {
     block_range_limit: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RawDatalensWarmupFileConfig {
-    enabled: Option<bool>,
-    ensure_on_startup: Option<bool>,
-    required: Option<bool>,
-    kind: Option<String>,
 }
 
 pub(super) fn load_raw_from_env() -> Result<RawDatalensConfig, ConfigError> {
@@ -105,13 +81,7 @@ fn load_env_overlay() -> Result<RawDatalensEnvOverlay, ConfigError> {
             "DATALENS_CHAIN_FAMILY",
             "DATALENS_CHAIN_NAME",
             "DATALENS_CHAIN_ID",
-            "DATALENS_DATASET_FAMILY",
-            "DATALENS_DATASET_NAME",
             "DATALENS_QUERY_BLOCK_RANGE_LIMIT",
-            "DATALENS_WARMUP_ENABLED",
-            "DATALENS_WARMUP_ENSURE_ON_STARTUP",
-            "DATALENS_WARMUP_REQUIRED",
-            "DATALENS_WARMUP_KIND",
             "DATALENS_GOVERNOR_ADDRESS",
             "DATALENS_GOVERNOR_TOKEN_ADDRESS",
             "DATALENS_GOVERNOR_TOKEN_STANDARD",
@@ -180,24 +150,11 @@ impl RawDatalensConfig {
                 datalens.timelock_address,
             );
 
-            if let Some(dataset) = datalens.dataset {
-                assign_value_if_some(&mut self.datalens_dataset_family, dataset.family);
-                assign_value_if_some(&mut self.datalens_dataset_name, dataset.name);
-            }
             if let Some(query_limits) = datalens.query_limits {
                 assign_value_if_some(
                     &mut self.datalens_query_block_range_limit,
                     query_limits.block_range_limit,
                 );
-            }
-            if let Some(warmup) = datalens.warmup {
-                assign_value_if_some(&mut self.datalens_warmup_enabled, warmup.enabled);
-                assign_value_if_some(
-                    &mut self.datalens_warmup_ensure_on_startup,
-                    warmup.ensure_on_startup,
-                );
-                assign_value_if_some(&mut self.datalens_warmup_required, warmup.required);
-                assign_value_if_some(&mut self.datalens_warmup_kind, warmup.kind);
             }
         }
 
@@ -224,27 +181,9 @@ impl RawDatalensConfig {
         assign_value_if_some(&mut self.datalens_chain_name, env.datalens_chain_name);
         assign_if_some(&mut self.datalens_chain_id, env.datalens_chain_id);
         assign_value_if_some(
-            &mut self.datalens_dataset_family,
-            env.datalens_dataset_family,
-        );
-        assign_value_if_some(&mut self.datalens_dataset_name, env.datalens_dataset_name);
-        assign_value_if_some(
             &mut self.datalens_query_block_range_limit,
             env.datalens_query_block_range_limit,
         );
-        assign_value_if_some(
-            &mut self.datalens_warmup_enabled,
-            env.datalens_warmup_enabled,
-        );
-        assign_value_if_some(
-            &mut self.datalens_warmup_ensure_on_startup,
-            env.datalens_warmup_ensure_on_startup,
-        );
-        assign_value_if_some(
-            &mut self.datalens_warmup_required,
-            env.datalens_warmup_required,
-        );
-        assign_value_if_some(&mut self.datalens_warmup_kind, env.datalens_warmup_kind);
         assign_if_some(
             &mut self.datalens_governor_address,
             env.datalens_governor_address,

@@ -518,7 +518,7 @@ fn test_indexer_runtime_config_defaults_to_latest_target_height() {
             assert!(!config.provisional.enabled);
             assert_eq!(
                 config.provisional.finality,
-                DatalensProvisionalFinality::SafeToLatest
+                DatalensProvisionalFinality::LatestOnly
             );
         },
     );
@@ -535,7 +535,7 @@ fn test_provisional_runtime_config_defaults_to_disabled_safe_to_latest() {
             let config = ProvisionalRuntimeConfig::from_env().expect("runtime config parses");
 
             assert!(!config.enabled);
-            assert_eq!(config.finality, DatalensProvisionalFinality::SafeToLatest);
+            assert_eq!(config.finality, DatalensProvisionalFinality::LatestOnly);
         },
     );
 }
@@ -1075,8 +1075,11 @@ fn test_datalens_retry_config_maps_query_max_attempts_to_sdk_retry_attempts() {
     let retry_config = datalens_retry_config(5);
 
     assert_eq!(retry_config.max_attempts, 5);
-    assert_eq!(retry_config.max_elapsed, None);
-    assert!(retry_config.jitter);
+    assert_eq!(
+        retry_config.initial_backoff,
+        std::time::Duration::from_millis(250)
+    );
+    assert_eq!(retry_config.max_backoff, std::time::Duration::from_secs(10));
 }
 
 #[test]
@@ -1099,7 +1102,6 @@ fn test_indexer_runtime_contract_set_plan_uses_configured_scope() {
         query_limits: degov_datalens_indexer::QueryLimitConfig {
             block_range_limit: 1_000,
         },
-        warmup: Default::default(),
         dao_contracts: None,
         chains: vec![degov_datalens_indexer::DatalensChainConfig {
             family: degov_datalens_indexer::ChainFamily::Evm,
@@ -1190,7 +1192,6 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         query_limits: degov_datalens_indexer::QueryLimitConfig {
             block_range_limit: 1_000,
         },
-        warmup: Default::default(),
         dao_contracts: None,
         chains: vec![degov_datalens_indexer::DatalensChainConfig {
             family: degov_datalens_indexer::ChainFamily::Evm,
@@ -1231,7 +1232,7 @@ fn test_indexer_runtime_single_mode_does_not_skip_target_below_start_block() {
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         },
         realtime: Default::default(),
     };
@@ -1276,7 +1277,7 @@ fn test_indexer_runtime_latest_target_height_does_not_skip_all_mode_contract_set
         proposal_timestamp_backfill: ProposalTimestampBackfillConfig::default(),
         provisional: ProvisionalRuntimeConfig {
             enabled: false,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         },
         realtime: Default::default(),
     };
