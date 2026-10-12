@@ -1177,7 +1177,7 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 [[package]]
 name = "datalens-core"
 version = "0.1.0"
-source = "git+https://github.com/ringecosystem/datalens?rev=85482d47d0e67995e9085daeae7618225bba1817#85482d47d0e67995e9085daeae7618225bba1817"
+source = "git+https://github.com/ringecosystem/datalens?rev=2f659b97d9df2b61663913cdd2edc0b53b4c9531#2f659b97d9df2b61663913cdd2edc0b53b4c9531"
 dependencies = [
  "alloy-primitives",
  "hex",
@@ -1190,7 +1190,7 @@ dependencies = [
 [[package]]
 name = "datalens-sdk"
 version = "0.1.0"
-source = "git+https://github.com/ringecosystem/datalens?rev=85482d47d0e67995e9085daeae7618225bba1817#85482d47d0e67995e9085daeae7618225bba1817"
+source = "git+https://github.com/ringecosystem/datalens?rev=2f659b97d9df2b61663913cdd2edc0b53b4c9531#2f659b97d9df2b61663913cdd2edc0b53b4c9531"
 dependencies = [
  "datalens-core",
  "futures",
@@ -4961,7 +4961,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

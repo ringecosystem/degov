@@ -48,6 +48,13 @@ pub(crate) async fn follow_durable(
                 segments.extend(batch.segments);
             }
             FollowEvent::CaughtUp { .. } => break,
+            FollowEvent::Skipped { blocks } => {
+                return Err(Error::Decode(format!(
+                    "durable follow skipped blocks {}..={}",
+                    blocks.start(),
+                    blocks.end()
+                )));
+            }
             FollowEvent::Stalled { reason, .. } => {
                 incomplete = Some(map_incomplete(reason));
                 break;
@@ -178,6 +185,9 @@ fn map_incomplete(reason: IncompleteReason) -> DatalensIncomplete {
         IncompleteReason::NotFollowedYet => DatalensIncomplete::NotFollowedYet,
         IncompleteReason::ProviderError => DatalensIncomplete::ProviderError,
         IncompleteReason::BudgetExhausted => DatalensIncomplete::BudgetExhausted,
+        // Durable follow does not read the hot tail. below_safe means that range is not
+        // promoted yet, so the indexer waits and asks again.
+        IncompleteReason::BelowSafe => DatalensIncomplete::NotFollowedYet,
     }
 }
 
