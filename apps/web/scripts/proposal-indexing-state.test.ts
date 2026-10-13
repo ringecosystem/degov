@@ -45,6 +45,19 @@ test("missing proposal shows a problem when the chain has it past the threshold"
   );
 });
 
+test("missing proposal stays indexing until an observation time is recorded", () => {
+  assert.equal(
+    getProposalMissingState({
+      chainExists: true,
+      chainCheckPending: false,
+      chainCheckError: null,
+      missingObservedAt: null,
+      now: PROPOSAL_INDEXING_PROBLEM_MS + 1000,
+    }),
+    "indexing"
+  );
+});
+
 test("missing proposal shows not found after the chain check rejects it", () => {
   assert.equal(
     getProposalMissingState({
