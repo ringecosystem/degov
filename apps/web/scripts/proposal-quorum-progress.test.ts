@@ -42,6 +42,20 @@ test("proposal total participation counts every vote bucket", () => {
   assert.equal(progress.totalVotesCast, 35n);
 });
 
+test("proposal quorum progress does not reach a zero quorum despite votes cast", () => {
+  const progress = getProposalQuorumProgress({
+    forVotes: 10n,
+    againstVotes: 20n,
+    abstainVotes: 5n,
+    quorumRequired: 0n,
+    countingMode: "support=bravo&quorum=for,abstain",
+  });
+
+  assert.equal(progress.currentVotes, 15n);
+  assert.equal(progress.totalVotesCast, 35n);
+  assert.equal(progress.hasReachedQuorum, false);
+});
+
 test("proposal quorum progress uses the compatibility fallback without a counting mode", () => {
   const progress = getProposalQuorumProgress({
     forVotes: 10n,
