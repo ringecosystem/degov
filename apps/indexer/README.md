@@ -57,10 +57,39 @@ shell.
 
 ## Build and test
 
+For a minimal local check, install Node.js 22 or newer and run this command from
+the repository root:
+
 ```bash
+node apps/indexer/scripts/indexer-diagnostics.test.mjs
+```
+
+It prints `Indexer diagnostics tests passed` on success. This test uses Node.js
+built-ins, in-memory fixtures, and mocked RPC responses; it needs no package
+installation, Rust toolchain, Docker, database, Datalens credentials, or live
+RPC endpoint. It checks diagnostic helpers, not connectivity to external
+services or end-to-end indexing.
+
+For the broader build and test recipes, install `just`, the Rust/Cargo toolchain,
+Node.js, and Docker with Compose v2 (used by the runtime packaging test). Run
+these recipes from `apps/indexer`, not the repository root. Before `just test`,
+provision a dedicated, disposable PostgreSQL test database (CI uses PostgreSQL
+17) and export `DEGOV_INDEXER_TEST_DATABASE_URL` with its connection URL in the
+same shell. The database user must be able to create and drop schemas; tests
+also drop the `squid_processor` schema, so never point this variable at a
+production or shared database. The deployment section below does not provision
+this test database. If the variable is unset, database-backed Rust tests fail
+with `DEGOV_INDEXER_TEST_DATABASE_URL is required`.
+
+```bash
+cd apps/indexer
 just build
 just test
 ```
+
+Live Datalens readiness and local-stack integration checks require the configured
+external services described below; passing the minimal local check does not
+verify those services.
 
 Use the root README's [Datalens-backed indexer deployment](../../README.md#datalens-backed-indexer-deployment)
 section for the canonical environment, configuration, migration, and startup
