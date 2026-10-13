@@ -440,6 +440,8 @@ pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
         || normalized.contains("503")
         || normalized.contains("504")
         || normalized.contains("524")
+        || normalized.contains("http 403")
+        || normalized.contains("transient provider")
     {
         return DatalensQueryErrorClass::Transient;
     }

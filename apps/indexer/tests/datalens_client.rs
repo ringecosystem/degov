@@ -152,6 +152,8 @@ fn test_classify_datalens_query_error_separates_provider_limit_from_timeout() {
         "503 no available server",
         "524 a timeout occurred",
         "error sending request for url",
+        "fatal provider failure: http 403",
+        "transient provider failure",
     ] {
         assert_eq!(
             classify_datalens_query_error(error),
