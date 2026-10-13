@@ -30,6 +30,20 @@ test("proposal quorum progress counts against votes only when counting mode incl
   assert.equal(progress.hasReachedQuorum, true);
 });
 
+test("proposal quorum progress stays below quorum by one vote beyond safe integer precision", () => {
+  const progress = getProposalQuorumProgress({
+    forVotes: 9_007_199_254_740_992n,
+    againstVotes: 1n,
+    abstainVotes: 0n,
+    quorumRequired: 9_007_199_254_740_993n,
+    countingMode: "support=bravo&quorum=for,abstain",
+  });
+
+  assert.equal(progress.currentVotes, 9_007_199_254_740_992n);
+  assert.equal(progress.totalVotesCast, 9_007_199_254_740_993n);
+  assert.equal(progress.hasReachedQuorum, false);
+});
+
 test("proposal total participation counts every vote bucket", () => {
   const progress = getProposalQuorumProgress({
     forVotes: 10n,
