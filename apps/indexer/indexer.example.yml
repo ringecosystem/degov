@@ -10,20 +10,14 @@
 # configured contract sets when every contract has daoCode.
 # Leave DEGOV_INDEXER_TARGET_HEIGHT unset or set it to latest for production
 # durable-head tracking. Numeric target heights are for debug or bounded test runs.
+# Warmup tasks were removed. Durable catch-up uses follow, and the log dataset is always evm.logs.
 
 datalens:
   endpoint: https://datalens.ringdao.com
   application: degov-live
   finality: durable_only
-  dataset:
-    family: evm
-    name: logs
   queryLimits:
     blockRangeLimit: 1000
-  warmup:
-    enabled: true
-    ensureOnStartup: true
-    required: false
 
 # Optional Datalens query concurrency env vars are process-local to one
 # indexer process/pod:

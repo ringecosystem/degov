@@ -4,16 +4,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use datalens_sdk::{
-    ApiErrorKind, DatalensClient, Error as DatalensSdkError, RetryConfig,
-    native::{ChainHeadFinalityInput, QueryInput, QueryResponse},
-    safety::{CacheSegment, DataFinality, extract_cache_segments},
-};
+use datalens_sdk::{Client as DatalensClient, Error as DatalensSdkError, HeadKind, RetryConfig};
+
+use super::follow::{follow_durable, query_latest};
 use log::{info, warn};
 
 use crate::{
-    DatalensConfig, DatalensError, DatalensLogQueryReader, DatalensProvisionalCacheSegment,
-    DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult,
+    DatalensConfig, DatalensError, DatalensLogQueryReader, DatalensProvisionalLogQueryReader,
+    DatalensProvisionalLogQueryResult,
 };
 
 pub trait DatalensNativeReader {
@@ -33,15 +31,13 @@ pub struct ServiceReadiness {
 pub struct DatalensNativeClient {
     client: DatalensClient,
     retry_config: RetryConfig,
-    service_base_endpoint: String,
-    application: String,
-    bearer_token: crate::SecretString,
-    http: reqwest::blocking::Client,
     query_gate: Option<DatalensQueryConcurrencyGate>,
     query_key: DatalensQueryConcurrencyKey,
     query_timeout: Duration,
+    chain_name: String,
     blocking_query_guard: Arc<DatalensBlockingQueryGuard>,
     blocking_head_guard: Arc<DatalensBlockingQueryGuard>,
+    provisional_cursors: Arc<Mutex<HashMap<String, datalens_sdk::ProvisionalCursor>>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -123,12 +119,12 @@ struct DatalensHeadCacheKey {
 }
 
 impl DatalensHeadCacheKey {
-    fn from_config(config: &DatalensConfig, finality: ChainHeadFinalityInput) -> Self {
+    fn from_config(config: &DatalensConfig, finality: &'static str) -> Self {
         Self {
             endpoint: config.endpoint.clone(),
             application: config.application.clone(),
             query_key: DatalensQueryConcurrencyKey::from_config(config),
-            finality: head_finality_cache_key(finality),
+            finality,
         }
     }
 }
@@ -209,7 +205,7 @@ impl DatalensBlockingQueryGuard {
 
     fn acquire(&self, operation: &str) -> Result<(), DatalensSdkError> {
         let mut state = self.state.lock().map_err(|_| {
-            DatalensSdkError::Transport("Datalens blocking query guard lock poisoned".to_owned())
+            DatalensSdkError::Decode("Datalens blocking query guard lock poisoned".to_owned())
         })?;
         if state.active_workers >= state.max_workers {
             let message = if operation == "query" {
@@ -223,7 +219,7 @@ impl DatalensBlockingQueryGuard {
                     state.active_workers
                 )
             };
-            return Err(DatalensSdkError::Transport(message));
+            return Err(DatalensSdkError::Decode(message));
         }
         state.active_workers += 1;
         Ok(())
@@ -414,7 +410,10 @@ impl DatalensQueryErrorClass {
 
 pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
     let normalized = error.to_ascii_lowercase();
-    if normalized.contains("provider_limit") || normalized.contains("narrow your filter") {
+    if normalized.contains("provider_limit")
+        || normalized.contains("narrow your filter")
+        || normalized.contains("quota_exceeded")
+    {
         return DatalensQueryErrorClass::ProviderLimit;
     }
     if normalized.contains("provider_timeout")
@@ -429,6 +428,8 @@ pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
         || normalized.contains("network")
         || normalized.contains("still in flight")
         || normalized.contains("provider_failure")
+        || normalized.contains("provider_error")
+        || normalized.contains("budget_exhausted")
         || normalized.contains("unavailable_head")
         || normalized.contains("no available server")
         || normalized.contains("storage_read_failure")
@@ -439,6 +440,8 @@ pub fn classify_datalens_query_error(error: &str) -> DatalensQueryErrorClass {
         || normalized.contains("503")
         || normalized.contains("504")
         || normalized.contains("524")
+        || normalized.contains("http 403")
+        || normalized.contains("transient provider")
     {
         return DatalensQueryErrorClass::Transient;
     }
@@ -454,26 +457,7 @@ pub fn datalens_query_error_is_current_head_race(error: &str) -> bool {
 
 impl DatalensNativeClient {
     pub fn from_config(config: &DatalensConfig) -> Result<Self, DatalensError> {
-        let retry_config = RetryConfig::default();
-        let client = DatalensClient::new(config.sdk_config())
-            .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
-        Ok(Self {
-            client,
-            retry_config,
-            service_base_endpoint: config.endpoint.clone(),
-            application: config.application.clone(),
-            bearer_token: config.bearer_token.clone(),
-            http: reqwest::blocking::Client::builder()
-                .timeout(config.timeout)
-                .user_agent(crate::config::DEGOV_DATALENS_USER_AGENT)
-                .build()
-                .map_err(|error| DatalensError::SdkConfig(error.to_string()))?,
-            query_gate: None,
-            query_key: DatalensQueryConcurrencyKey::from_config(config),
-            query_timeout: config.timeout,
-            blocking_query_guard: blocking_query_guard_for_config(config, "query")?,
-            blocking_head_guard: blocking_query_guard_for_config(config, "head")?,
-        })
+        Self::from_config_with_retry_config(config, RetryConfig::default())
     }
 
     pub fn from_config_with_retry_config(
@@ -481,35 +465,25 @@ impl DatalensNativeClient {
         retry_config: RetryConfig,
     ) -> Result<Self, DatalensError> {
         info!(
-            "Datalens SDK retry/backoff configured max_attempts={} initial_delay_ms={} max_delay_ms={} max_elapsed_ms={:?} jitter={} jitter_factor={} per_attempt_delays_managed_by_sdk=true",
+            "Datalens SDK retry/backoff configured max_attempts={} initial_backoff_ms={} max_backoff_ms={}",
             retry_config.max_attempts,
-            retry_config.initial_delay.as_millis(),
-            retry_config.max_delay.as_millis(),
-            retry_config
-                .max_elapsed
-                .map(|duration| duration.as_millis()),
-            retry_config.jitter,
-            retry_config.jitter_factor
+            retry_config.initial_backoff.as_millis(),
+            retry_config.max_backoff.as_millis(),
         );
-        let client =
-            DatalensClient::new_with_retry_config(config.sdk_config(), retry_config.clone())
-                .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
+        let mut sdk_config = config.sdk_config();
+        sdk_config.retry = retry_config.clone();
+        let client = DatalensClient::new(sdk_config)
+            .map_err(|error| DatalensError::SdkConfig(error.to_string()))?;
         Ok(Self {
             client,
             retry_config,
-            service_base_endpoint: config.endpoint.clone(),
-            application: config.application.clone(),
-            bearer_token: config.bearer_token.clone(),
-            http: reqwest::blocking::Client::builder()
-                .timeout(config.timeout)
-                .user_agent(crate::config::DEGOV_DATALENS_USER_AGENT)
-                .build()
-                .map_err(|error| DatalensError::SdkConfig(error.to_string()))?,
             query_gate: None,
             query_key: DatalensQueryConcurrencyKey::from_config(config),
             query_timeout: config.timeout,
+            chain_name: config.chain.configured_name.clone(),
             blocking_query_guard: blocking_query_guard_for_config(config, "query")?,
             blocking_head_guard: blocking_query_guard_for_config(config, "head")?,
+            provisional_cursors: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -521,110 +495,22 @@ impl DatalensNativeClient {
         self
     }
 
-    pub(crate) fn service_base_endpoint(&self) -> &str {
-        &self.service_base_endpoint
-    }
-
-    pub(crate) fn application(&self) -> &str {
-        &self.application
-    }
-
-    pub(crate) fn bearer_token(&self) -> &str {
-        self.bearer_token.expose_secret()
-    }
-
-    pub(crate) fn blocking_http(&self) -> &reqwest::blocking::Client {
-        &self.http
-    }
-
-    fn query_with_transient_fallback(
+    fn query_with_deadline(
         &self,
-        input: QueryInput,
+        request: crate::DaoLogRequest,
     ) -> Result<crate::DatalensLogQueryResult, DatalensSdkError> {
-        let started_at = Instant::now();
-        let mut attempt = 1;
-        loop {
-            match self.query_with_deadline(input.clone()) {
-                Ok(response) => {
-                    return Ok(crate::DatalensLogQueryResult {
-                        rows: response.rows,
-                        cache: crate::DatalensLogQueryCacheSummary::from_datalens_cache_json(
-                            &response.cache,
-                        ),
-                    });
-                }
-                Err(error) => {
-                    let Some(delay) =
-                        fallback_retry_delay(&self.retry_config, &error, attempt, started_at)
-                    else {
-                        return Err(error);
-                    };
-                    warn!(
-                        "Datalens query transient fallback retry scheduled attempt={} max_attempts={} delay_ms={} error_class={} error={}",
-                        attempt + 1,
-                        self.retry_config.max_attempts,
-                        delay.as_millis(),
-                        classify_datalens_query_error(&error.to_string()).as_str(),
-                        error
-                    );
-                    std::thread::sleep(delay);
-                    attempt += 1;
-                }
-            }
-        }
-    }
-
-    fn query_provisional_with_transient_fallback(
-        &self,
-        input: QueryInput,
-    ) -> Result<DatalensProvisionalLogQueryResult, DatalensSdkError> {
-        let started_at = Instant::now();
-        let mut attempt = 1;
-        loop {
-            match self.query_provisional_with_deadline(input.clone()) {
-                Ok(response) => {
-                    let segments = extract_cache_segments(&response)
-                        .into_iter()
-                        .filter_map(provisional_cache_segment)
-                        .collect();
-                    return Ok(DatalensProvisionalLogQueryResult {
-                        rows: response.rows,
-                        segments,
-                    });
-                }
-                Err(error) => {
-                    let Some(delay) =
-                        fallback_retry_delay(&self.retry_config, &error, attempt, started_at)
-                    else {
-                        return Err(error);
-                    };
-                    warn!(
-                        "Datalens provisional query transient fallback retry scheduled attempt={} max_attempts={} delay_ms={} error_class={} error={}",
-                        attempt + 1,
-                        self.retry_config.max_attempts,
-                        delay.as_millis(),
-                        classify_datalens_query_error(&error.to_string()).as_str(),
-                        error
-                    );
-                    std::thread::sleep(delay);
-                    attempt += 1;
-                }
-            }
-        }
-    }
-
-    fn query_with_deadline(&self, input: QueryInput) -> Result<QueryResponse, DatalensSdkError> {
         self.run_query_with_deadline("query", Instant::now(), move |client| {
-            client.native().query(input)
+            block_on_current_thread(follow_durable(&client, &request))
         })
     }
 
     fn query_provisional_with_deadline(
         &self,
-        input: QueryInput,
-    ) -> Result<QueryResponse, DatalensSdkError> {
+        request: crate::DaoLogRequest,
+    ) -> Result<DatalensProvisionalLogQueryResult, DatalensSdkError> {
+        let cursors = Arc::clone(&self.provisional_cursors);
         self.run_query_with_deadline("provisional query", Instant::now(), move |client| {
-            client.native().query_provisional(input)
+            block_on_current_thread(query_latest(&client, &cursors, &request))
         })
     }
 
@@ -650,7 +536,7 @@ impl DatalensNativeClient {
                 return Err(error);
             }
             Err(error) => {
-                return Err(DatalensSdkError::Transport(error.to_string()));
+                return Err(DatalensSdkError::Decode(error.to_string()));
             }
         };
         let Some(remaining_timeout) = self.query_timeout.checked_sub(started_at.elapsed()) else {
@@ -682,7 +568,7 @@ impl DatalensNativeClient {
             });
 
         if let Err(error) = spawn_result {
-            return Err(DatalensSdkError::Transport(format!(
+            return Err(DatalensSdkError::Decode(format!(
                 "spawn Datalens {operation} worker: {error}"
             )));
         }
@@ -694,7 +580,7 @@ impl DatalensNativeClient {
                 self.warn_query_timeout(operation, &error);
                 Err(error)
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(DatalensSdkError::Transport(format!(
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(DatalensSdkError::Decode(format!(
                 "Datalens {operation} worker stopped before returning a response"
             ))),
         }
@@ -754,29 +640,6 @@ impl DatalensNativeClient {
     }
 }
 
-fn fallback_retry_delay(
-    retry_config: &RetryConfig,
-    error: &DatalensSdkError,
-    failed_attempt: u32,
-    started_at: Instant,
-) -> Option<std::time::Duration> {
-    if error.is_retryable() || !is_transient_sdk_api_error(error) {
-        return None;
-    }
-    let delay = retry_config.delay_for_attempt(
-        failed_attempt,
-        error
-            .retry_after_seconds()
-            .map(std::time::Duration::from_secs),
-    )?;
-    if let Some(max_elapsed) = retry_config.max_elapsed
-        && started_at.elapsed().saturating_add(delay) > max_elapsed
-    {
-        return None;
-    }
-    Some(delay)
-}
-
 fn blocking_query_guard_for_config(
     config: &DatalensConfig,
     operation: &'static str,
@@ -798,7 +661,7 @@ fn blocking_query_guard_for_config(
 
 fn head_cache_entry_for_config(
     config: &DatalensConfig,
-    finality: ChainHeadFinalityInput,
+    finality: &'static str,
 ) -> Result<Arc<DatalensHeadCacheEntry>, DatalensError> {
     static HEAD_CACHE_ENTRIES: OnceLock<
         Mutex<HashMap<DatalensHeadCacheKey, Arc<DatalensHeadCacheEntry>>>,
@@ -823,7 +686,7 @@ fn acquire_head_cache(
     let mut state = entry
         .state
         .lock()
-        .map_err(|_| DatalensSdkError::Transport("Datalens head cache lock poisoned".to_owned()))?;
+        .map_err(|_| DatalensSdkError::Decode("Datalens head cache lock poisoned".to_owned()))?;
     let mut waited_for_in_flight = false;
 
     loop {
@@ -850,7 +713,7 @@ fn acquire_head_cache(
         }
         let (next_state, wait_result) =
             entry.ready.wait_timeout(state, remaining).map_err(|_| {
-                DatalensSdkError::Transport("Datalens head cache lock poisoned".to_owned())
+                DatalensSdkError::Decode("Datalens head cache lock poisoned".to_owned())
             })?;
         state = next_state;
         if wait_result.timed_out() {
@@ -885,45 +748,23 @@ fn datalens_query_timeout_error(
         message.push_str(": ");
         message.push_str(context);
     }
-    DatalensSdkError::Transport(message)
+    DatalensSdkError::Decode(message)
 }
 
-fn head_finality_cache_key(finality: ChainHeadFinalityInput) -> &'static str {
-    match finality {
-        ChainHeadFinalityInput::Safe => "safe",
-        ChainHeadFinalityInput::Latest => "latest",
-        ChainHeadFinalityInput::Finalized => "finalized",
-    }
-}
-
-fn is_transient_sdk_api_error(error: &DatalensSdkError) -> bool {
-    if let Some(api_error) = error.api_error() {
-        return matches!(
-            api_error.kind,
-            ApiErrorKind::ProviderFailure
-                | ApiErrorKind::ProviderTimeout
-                | ApiErrorKind::StorageReadFailure
-                | ApiErrorKind::StorageWriteFailure
-                | ApiErrorKind::ManifestUpdateFailure
-                | ApiErrorKind::Internal
-                | ApiErrorKind::UnavailableHead
-        ) || api_error
-            .status
-            .is_some_and(|status| (500..600).contains(&status));
-    }
-
-    match error {
-        DatalensSdkError::Transport(_) => true,
-        DatalensSdkError::HttpStatus { status, .. } => (500..600).contains(status),
-        _ => false,
-    }
+fn block_on_current_thread<F, T>(future: F) -> Result<T, DatalensSdkError>
+where
+    F: std::future::Future<Output = Result<T, DatalensSdkError>>,
+{
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| DatalensSdkError::Decode(error.to_string()))?;
+    runtime.block_on(future)
 }
 
 impl DatalensNativeReader for DatalensNativeClient {
     fn service_readiness(&self) -> Result<ServiceReadiness, DatalensError> {
-        self.client
-            .native()
-            .discovery()
+        self.head_height_uncached(&self.chain_name, HeadKind::Safe)
             .map(|_| ServiceReadiness {
                 native_graphql_ready: true,
             })
@@ -934,64 +775,79 @@ impl DatalensNativeReader for DatalensNativeClient {
 impl DatalensLogQueryReader for DatalensNativeClient {
     fn query_logs(
         &mut self,
-        input: QueryInput,
+        request: &crate::DaoLogRequest,
     ) -> Result<crate::DatalensLogQueryResult, DatalensError> {
-        self.query_with_transient_fallback(input).map_err(|error| {
-            let error_message = error.to_string();
-            warn!(
-                "Datalens query failed error_class={} max_attempts={} error={}",
-                classify_datalens_query_error(&error_message).as_str(),
-                self.retry_config.max_attempts,
-                error_message
-            );
-            DatalensError::Query(error_message)
-        })
+        self.query_with_deadline(request.clone())
+            .map_err(|error| query_error(self, "query", error))
     }
 }
 
 impl DatalensProvisionalLogQueryReader for DatalensNativeClient {
     fn query_provisional_logs(
         &mut self,
-        input: QueryInput,
+        request: &crate::DaoLogRequest,
     ) -> Result<DatalensProvisionalLogQueryResult, DatalensError> {
-        self.query_provisional_with_transient_fallback(input)
-            .map_err(|error| {
-                let error_message = error.to_string();
-                if datalens_query_error_is_current_head_race(&error_message) {
-                    info!(
-                        "Datalens provisional query skipped current head race error_class={} max_attempts={} error={}",
-                        classify_datalens_query_error(&error_message).as_str(),
-                        self.retry_config.max_attempts,
-                        error_message
-                    );
-                } else {
-                    warn!(
-                        "Datalens provisional query failed error_class={} max_attempts={} error={}",
-                        classify_datalens_query_error(&error_message).as_str(),
-                        self.retry_config.max_attempts,
-                        error_message
-                    );
-                }
-                DatalensError::Query(error_message)
-            })
+        self.query_provisional_with_deadline(request.clone())
+            .map_err(|error| query_error(self, "provisional query", error))
     }
+}
+
+fn query_error(
+    client: &DatalensNativeClient,
+    operation: &str,
+    error: DatalensSdkError,
+) -> DatalensError {
+    let error_message = error.to_string();
+    if datalens_query_error_is_current_head_race(&error_message) {
+        info!(
+            "Datalens {operation} skipped current head race error_class={} max_attempts={} error={}",
+            classify_datalens_query_error(&error_message).as_str(),
+            client.retry_config.max_attempts,
+            error_message
+        );
+    } else {
+        warn!(
+            "Datalens {operation} failed error_class={} max_attempts={} error={}",
+            classify_datalens_query_error(&error_message).as_str(),
+            client.retry_config.max_attempts,
+            error_message
+        );
+    }
+    DatalensError::Query(error_message)
 }
 
 impl DatalensDurableHeadReader for DatalensNativeClient {
     fn durable_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
-        self.head_height(config, ChainHeadFinalityInput::Safe)
+        self.head_height(config, "safe", HeadKind::Safe)
     }
 
     fn latest_head_height(&mut self, config: &DatalensConfig) -> Result<i64, DatalensError> {
-        self.head_height(config, ChainHeadFinalityInput::Latest)
+        self.head_height(config, "latest", HeadKind::Latest)
     }
 }
 
 impl DatalensNativeClient {
+    fn head_height_uncached(
+        &self,
+        chain_name: &str,
+        kind: HeadKind,
+    ) -> Result<u64, DatalensSdkError> {
+        let chain_name = chain_name.to_owned();
+        self.run_query_with_deadline("head", Instant::now(), move |client| {
+            block_on_current_thread(async move {
+                let chain = datalens_sdk::ChainName::new(chain_name)
+                    .map_err(|error| DatalensSdkError::Decode(error.to_string()))?;
+                let heads = client.heads(&chain).await?;
+                Ok(kind.of(&heads))
+            })
+        })
+    }
+
     fn head_height(
         &mut self,
         config: &DatalensConfig,
-        finality: ChainHeadFinalityInput,
+        finality: &'static str,
+        kind: HeadKind,
     ) -> Result<i64, DatalensError> {
         let started_at = Instant::now();
         let cache_entry = head_cache_entry_for_config(config, finality)?;
@@ -1014,54 +870,26 @@ impl DatalensNativeClient {
         let chain_name = config.chain.configured_name.clone();
         let response = self
             .run_query_with_deadline("head", started_at, move |client| {
-                client.native().chain_head(&chain_name, Some(finality))
+                block_on_current_thread(async move {
+                    let chain = datalens_sdk::ChainName::new(chain_name)
+                        .map_err(|error| DatalensSdkError::Decode(error.to_string()))?;
+                    client.heads(&chain).await
+                })
             })
             .map_err(|error| {
                 finish_head_cache_fetch(&cache_entry, None);
                 DatalensError::Query(error.to_string())
             })?;
 
-        let height = i64::try_from(response.height).map_err(|_| {
+        let height_u64 = kind.of(&response);
+        let height = i64::try_from(height_u64).map_err(|_| {
             finish_head_cache_fetch(&cache_entry, None);
             DatalensError::Query(format!(
-                "Datalens chain head height {} exceeds supported indexer height",
-                response.height
+                "Datalens chain head height {height_u64} exceeds supported indexer height"
             ))
         })?;
         finish_head_cache_fetch(&cache_entry, Some(height));
         Ok(height)
-    }
-}
-
-fn provisional_cache_segment(segment: CacheSegment) -> Option<DatalensProvisionalCacheSegment> {
-    let range = segment.range?;
-    let anchor = segment.anchor;
-    Some(DatalensProvisionalCacheSegment {
-        source: segment.source.unwrap_or_else(|| "unknown".to_owned()),
-        finality: data_finality_value(segment.finality).to_owned(),
-        range_start_block: i64::try_from(range.start).ok()?,
-        range_end_block: i64::try_from(range.end).ok()?,
-        anchor_block_number: anchor
-            .as_ref()
-            .and_then(|anchor| i64::try_from(anchor.height).ok()),
-        anchor_block_hash: anchor.as_ref().and_then(|anchor| anchor.block_hash.clone()),
-        anchor_parent_hash: anchor
-            .as_ref()
-            .and_then(|anchor| anchor.parent_hash.clone()),
-        anchor_block_timestamp: anchor
-            .as_ref()
-            .and_then(|anchor| anchor.timestamp)
-            .and_then(|timestamp| i64::try_from(timestamp).ok()),
-    })
-}
-
-fn data_finality_value(finality: DataFinality) -> &'static str {
-    match finality {
-        DataFinality::Finalized => "finalized",
-        DataFinality::Safe => "safe",
-        DataFinality::Latest => "latest",
-        DataFinality::Provisional => "provisional",
-        DataFinality::Unknown => "unknown",
     }
 }
 
@@ -1071,7 +899,7 @@ pub fn verify_datalens_service(
     let readiness = reader.service_readiness()?;
     if !readiness.native_graphql_ready {
         return Err(DatalensError::Readiness(
-            "native GraphQL QueryRoot readiness was not confirmed".to_owned(),
+            "Datalens heads readiness was not confirmed".to_owned(),
         ));
     }
     Ok(readiness)

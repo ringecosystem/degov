@@ -1,22 +1,21 @@
 use std::fmt;
 use std::time::Duration;
 
-use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
     AdaptiveChunkSizerConfig, BatchReadPlanConfig, ChainContracts, ChainFamily,
     ChainIdentityConfig, ChainReadExecutionReport, ChainReadMethod, ChainReadResult,
-    ChainReadValue, ChainTool, DaoContractAddresses, DaoEventDecoder, DatalensConfig,
-    DatalensError, DatalensFinality, DatalensLogQueryReader, DatalensLogQueryResult,
-    DatasetKeyConfig, GovernanceTokenStandard, InMemoryProposalProjectionRepository,
-    InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
-    InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
-    IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts, IndexerRunnerOptions,
-    IndexerRunnerStore, IndexerRunnerTransaction, PartialChainReadFailureReport,
-    ProposalProjectionBatch, ProposalProjectionContext, ProposalProjectionRepository,
-    ProposalTimestampBackfillConfig, QueryLimitConfig, SecretString, TimelockProjectionContext,
-    TimelockProjectionEvent, TimelockProjectionRepository, TimelockProposalLinkContext,
-    TokenProjectionContext, TokenProjectionRepository, VoteProjectionContext,
-    VoteProjectionRepository,
+    ChainReadValue, ChainTool, DaoContractAddresses, DaoEventDecoder, DaoLogRequest,
+    DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader,
+    DatalensLogQueryResult, DatasetKeyConfig, GovernanceTokenStandard,
+    InMemoryProposalProjectionRepository, InMemoryTimelockProjectionRepository,
+    InMemoryTokenProjectionRepository, InMemoryVoteProjectionRepository, IndexerCheckpoint,
+    IndexerCheckpointIdentity, IndexerProjectionBatch, IndexerRunner, IndexerRunnerContexts,
+    IndexerRunnerOptions, IndexerRunnerStore, IndexerRunnerTransaction,
+    PartialChainReadFailureReport, ProposalProjectionBatch, ProposalProjectionContext,
+    ProposalProjectionRepository, ProposalTimestampBackfillConfig, QueryLimitConfig, SecretString,
+    TimelockProjectionContext, TimelockProjectionEvent, TimelockProjectionRepository,
+    TimelockProposalLinkContext, TokenProjectionContext, TokenProjectionRepository,
+    VoteProjectionContext, VoteProjectionRepository,
 };
 use ethabi::{Token, encode};
 use serde_json::{Value, json};
@@ -401,26 +400,16 @@ struct ScriptedReader {
 }
 
 impl DatalensLogQueryReader for ScriptedReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        let addresses = input
-            .selector
-            .evm_logs
-            .as_ref()
-            .map(|selector| {
-                selector
-                    .addresses
-                    .iter()
-                    .map(|address| address.to_ascii_lowercase())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let topic0_values = input
-            .selector
-            .evm_logs
-            .as_ref()
-            .and_then(|selector| selector.topics.first())
-            .cloned()
-            .unwrap_or_default();
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
+        let addresses = request
+            .addresses
+            .iter()
+            .map(|address| address.to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        let topic0_values = request.topic0s.clone();
         let rows = self
             .rows
             .iter()
@@ -441,7 +430,7 @@ impl DatalensLogQueryReader for ScriptedReader {
                     .and_then(Value::as_str)
                     .unwrap_or_default();
 
-                (input.range.start..=input.range.end).contains(&block_number)
+                (request.start..=request.end).contains(&block_number)
                     && (addresses.is_empty()
                         || addresses.iter().any(|candidate| candidate == &address))
                     && (topic0_values.is_empty()
@@ -677,7 +666,6 @@ fn options() -> IndexerRunnerOptions {
             query_limits: QueryLimitConfig {
                 block_range_limit: 10,
             },
-            warmup: Default::default(),
             dao_contracts: Some(addresses()),
             chains: Vec::new(),
         },

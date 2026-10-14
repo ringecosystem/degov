@@ -1,9 +1,5 @@
 use std::{collections::BTreeMap, fmt};
 
-use datalens_sdk::safety::{
-    BlockAnchor, DataFinality, DataRange, PromotionDecision, plan_promotion,
-};
-
 use crate::datalens::DatalensProvisionalLogPage;
 use crate::{
     BatchReadPlanConfig, ChainContracts, DaoContractAddresses, DaoLogSource, DatalensConfig,
@@ -342,6 +338,13 @@ pub trait DatalensProvisionalSegmentStore {
         &mut self,
         segments: &[DatalensProvisionalSegmentWrite],
     ) -> Result<(), Self::Error>;
+
+    fn rollback_provisional_from(
+        &mut self,
+        scope: &ProvisionalRollbackScope,
+        from_block: u64,
+        reason: &str,
+    ) -> Result<(), Self::Error>;
 }
 
 pub trait ProvisionalPowerOverlayStore {
@@ -419,39 +422,20 @@ pub fn plan_provisional_segment_cleanup(
         .anchor_block_number
         .and_then(|height| u64::try_from(height).ok())
         .unwrap_or(range_end);
-    let durable_head = BlockAnchor {
-        range_kind: "block".to_owned(),
-        height: finalized_height,
-        block_hash: None,
-        parent_hash: None,
-        timestamp: None,
-        finality: DataFinality::Safe,
-    };
-    let provisional_range = DataRange::new("block", range_start, range_end);
-    let provisional_anchor = BlockAnchor {
-        range_kind: "block".to_owned(),
-        height: anchor_height,
-        block_hash: None,
-        parent_hash: None,
-        timestamp: None,
-        finality: DataFinality::from(candidate.segment_finality.as_str()),
-    };
-
-    match plan_promotion(
-        Some(&durable_head),
-        Some(&provisional_range),
-        Some(&provisional_anchor),
-    )
-    .decision
-    {
-        PromotionDecision::Promote { .. } => ProvisionalSegmentCleanupDecision::Finalize,
-        PromotionDecision::Rollback { .. } => ProvisionalSegmentCleanupDecision::Invalid,
-        PromotionDecision::KeepProvisional { .. } => ProvisionalSegmentCleanupDecision::Keep,
-        PromotionDecision::Recheck { .. } if finalized_height >= range_end => {
-            ProvisionalSegmentCleanupDecision::Finalize
-        }
-        PromotionDecision::Recheck { .. } => ProvisionalSegmentCleanupDecision::Keep,
+    if !matches!(
+        candidate.segment_finality.as_str(),
+        "unsafe" | "safe" | "finalized" | "latest" | "provisional"
+    ) {
+        return ProvisionalSegmentCleanupDecision::Invalid;
     }
+    if finalized_height >= range_end && anchor_height <= finalized_height {
+        return ProvisionalSegmentCleanupDecision::Finalize;
+    }
+    if finalized_height < range_start {
+        return ProvisionalSegmentCleanupDecision::Keep;
+    }
+    let _ = (range_start, range_end);
+    ProvisionalSegmentCleanupDecision::Keep
 }
 
 pub struct ProvisionalWorker<'a, R, S> {
@@ -482,16 +466,34 @@ where
             self.options.from_block,
             self.options.to_block,
         )?;
-        let pages = fetch_provisional_dao_log_pages(self.reader, &plans, self.options.finality)?;
+        let mut pages =
+            fetch_provisional_dao_log_pages(self.reader, &plans, self.options.finality)?;
+        if let Some(from) = pages.iter().filter_map(|page| page.rollback_from).min() {
+            self.store
+                .rollback_provisional_from(
+                    &ProvisionalRollbackScope {
+                        dao_code: self.options.dao_code.clone(),
+                        contract_set_id: self.options.contract_set_id.clone(),
+                        chain_id: self.options.chain_id,
+                        source: Some("hot".to_owned()),
+                    },
+                    from,
+                    "anchor rollback",
+                )
+                .map_err(|error| ProvisionalWorkerError::Store(error.to_string()))?;
+            pages = fetch_provisional_dao_log_pages(self.reader, &plans, self.options.finality)?;
+        }
         let mut writes = Vec::new();
         let mut proposal_writes = Vec::new();
         let mut proposal_event_writes = Vec::new();
         let mut vote_writes = Vec::new();
 
         for page in pages {
-            let selector = serde_json::to_string(&page.plan.input.selector)
-                .unwrap_or_else(|_| "unavailable".to_owned());
-            let selector_fingerprint = datalens_selector_fingerprint(&page.plan.input.selector);
+            if page.rollback_from.is_some() {
+                continue;
+            }
+            let selector = page.plan.request.selector_json().to_string();
+            let selector_fingerprint = datalens_selector_fingerprint(&page.plan.request);
             let segment_writes = page
                 .segments
                 .iter()
