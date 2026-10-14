@@ -1,7 +1,7 @@
 pub mod client;
 pub mod effectiveness;
+mod follow;
 pub mod planner;
-pub mod warmup;
 
 pub use client::{
     DatalensDurableHeadReader, DatalensNativeClient, DatalensNativeReader,
@@ -10,17 +10,14 @@ pub use client::{
     datalens_query_error_is_current_head_race, verify_datalens_service,
 };
 pub use effectiveness::{
-    DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary, DatalensLogQueryResult,
-    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields,
-    datalens_selector_fingerprint,
+    DatalensIncomplete, DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary,
+    DatalensLogQueryResult, DatalensQueryEffectivenessAggregation,
+    DatalensQueryEffectivenessLogFields, DatalensServe, datalens_selector_fingerprint,
 };
 pub use planner::{
-    DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogSource, DatalensLogPage,
-    DatalensLogQueryReader, DatalensProvisionalCacheSegment, DatalensProvisionalLogPage,
-    DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult, fetch_dao_log_pages,
-    fetch_provisional_dao_log_pages, plan_dao_log_queries,
-};
-pub use warmup::{
-    DatalensWarmupConfig, DatalensWarmupEnsureOutcome, DatalensWarmupEnsurer, DatalensWarmupKind,
-    DatalensWarmupSubmitRequest, ensure_datalens_warmup_task, follow_query_request,
+    DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan, DaoLogRequest, DaoLogSource,
+    DatalensLogPage, DatalensLogQueryReader, DatalensProvisionalCacheSegment,
+    DatalensProvisionalLogPage, DatalensProvisionalLogQueryReader,
+    DatalensProvisionalLogQueryResult, fetch_dao_log_pages, fetch_provisional_dao_log_pages,
+    plan_dao_log_queries,
 };

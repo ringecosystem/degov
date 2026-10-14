@@ -20,9 +20,12 @@ impl PostgresProvisionalCleanupStore {
             transaction.commit().await?;
             return Ok(ProvisionalCleanupReport::default());
         };
-        let segment_ids =
+        let (segment_ids, invalid_ids) =
             finalized_provisional_segment_ids(&mut transaction, identity, source, finalized_height)
                 .await?;
+        if !invalid_ids.is_empty() {
+            mark_segments_invalid(&mut transaction, &invalid_ids, "promotion invalid").await?;
+        }
 
         let report = ProvisionalCleanupReport {
             segments_marked_finalized: mark_segments_finalized(&mut transaction, &segment_ids)
@@ -87,54 +90,83 @@ impl PostgresProvisionalCleanupStore {
         reason: &str,
     ) -> Result<ProvisionalRollbackReport, PostgresIndexerRunnerStoreError> {
         let mut transaction = self.pool.begin().await?;
-        let report = ProvisionalRollbackReport {
-            segments_marked_invalid: mark_available_segments_invalid(
-                &mut transaction,
-                scope,
-                reason,
-            )
-            .await?,
-            contributor_overlays_marked_invalid: mark_available_overlay_table_invalid(
-                &mut transaction,
-                "degov_provisional_contributor_power_overlay",
-                scope,
-            )
-            .await?,
-            delegate_overlays_marked_invalid: mark_available_overlay_table_invalid(
-                &mut transaction,
-                "degov_provisional_delegate_power_overlay",
-                scope,
-            )
-            .await?,
-            proposal_overlays_marked_invalid: mark_available_overlay_table_invalid(
-                &mut transaction,
-                "degov_provisional_proposal_overlay",
-                scope,
-            )
-            .await?,
-            proposal_event_overlays_marked_invalid: mark_available_overlay_table_invalid(
-                &mut transaction,
-                "degov_provisional_proposal_event_overlay",
-                scope,
-            )
-            .await?,
-            timelock_overlays_marked_invalid: mark_available_overlay_table_invalid(
-                &mut transaction,
-                "degov_provisional_timelock_operation_overlay",
-                scope,
-            )
-            .await?,
-            vote_overlays_marked_invalid: mark_available_overlay_table_invalid(
-                &mut transaction,
-                "degov_provisional_vote_cast_group_overlay",
-                scope,
-            )
-            .await?,
-        };
+        let report = rollback_available_overlays(&mut transaction, scope, 0, reason).await?;
         transaction.commit().await?;
 
         Ok(report)
     }
+
+    pub async fn rollback_provisional_overlays_from(
+        &self,
+        scope: &ProvisionalRollbackScope,
+        from_block: i64,
+        reason: &str,
+    ) -> Result<ProvisionalRollbackReport, PostgresIndexerRunnerStoreError> {
+        let mut transaction = self.pool.begin().await?;
+        let report = rollback_available_overlays(&mut transaction, scope, from_block, reason).await?;
+        transaction.commit().await?;
+
+        Ok(report)
+    }
+}
+
+async fn rollback_available_overlays(
+    transaction: &mut Transaction<'_, Postgres>,
+    scope: &ProvisionalRollbackScope,
+    from_block: i64,
+    reason: &str,
+) -> Result<ProvisionalRollbackReport, PostgresIndexerRunnerStoreError> {
+    Ok(ProvisionalRollbackReport {
+            segments_marked_invalid: mark_available_segments_invalid(
+                transaction,
+                scope,
+                reason,
+                from_block,
+            )
+            .await?,
+            contributor_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                transaction,
+                "degov_provisional_contributor_power_overlay",
+                scope,
+                from_block,
+            )
+            .await?,
+            delegate_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                transaction,
+                "degov_provisional_delegate_power_overlay",
+                scope,
+                from_block,
+            )
+            .await?,
+            proposal_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                transaction,
+                "degov_provisional_proposal_overlay",
+                scope,
+                from_block,
+            )
+            .await?,
+            proposal_event_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                transaction,
+                "degov_provisional_proposal_event_overlay",
+                scope,
+                from_block,
+            )
+            .await?,
+            timelock_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                transaction,
+                "degov_provisional_timelock_operation_overlay",
+                scope,
+                from_block,
+            )
+            .await?,
+            vote_overlays_marked_invalid: mark_available_overlay_table_invalid(
+                transaction,
+                "degov_provisional_vote_cast_group_overlay",
+                scope,
+                from_block,
+            )
+            .await?,
+    })
 }
 
 impl ProvisionalCleanupStore for PostgresProvisionalCleanupStore {
@@ -197,6 +229,18 @@ impl DatalensProvisionalSegmentStore for PostgresProvisionalSegmentStore {
         block_on_runtime(PostgresProvisionalSegmentStore::write_provisional_segments(
             self, segments,
         ))
+    }
+
+    fn rollback_provisional_from(
+        &mut self,
+        scope: &ProvisionalRollbackScope,
+        from_block: u64,
+        reason: &str,
+    ) -> Result<(), Self::Error> {
+        let from_block = i64::try_from(from_block).unwrap_or(i64::MAX);
+        let store = PostgresProvisionalCleanupStore::new(self.pool.clone());
+        block_on_runtime(store.rollback_provisional_overlays_from(scope, from_block, reason))
+            .map(drop)
     }
 }
 
@@ -412,7 +456,7 @@ async fn finalized_provisional_segment_ids(
     identity: &IndexerCheckpointIdentity,
     source: Option<&str>,
     finalized_height: i64,
-) -> Result<Vec<String>, PostgresIndexerRunnerStoreError> {
+) -> Result<(Vec<String>, Vec<String>), PostgresIndexerRunnerStoreError> {
     let rows = sqlx::query(
         "SELECT
              id,
@@ -437,22 +481,45 @@ async fn finalized_provisional_segment_ids(
     .fetch_all(&mut **transaction)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .filter_map(|row| {
-            let candidate = ProvisionalSegmentCleanupCandidate {
-                range_start_block: row.get("range_start_block"),
-                range_end_block: row.get("range_end_block"),
-                segment_finality: row.get("segment_finality"),
-                anchor_block_number: row.get("anchor_block_number"),
-            };
-            match plan_provisional_segment_cleanup(finalized_height, &candidate) {
-                ProvisionalSegmentCleanupDecision::Finalize => Some(row.get("id")),
-                ProvisionalSegmentCleanupDecision::Keep
-                | ProvisionalSegmentCleanupDecision::Invalid => None,
-            }
-        })
-        .collect())
+    let mut finalize = Vec::new();
+    let mut invalid = Vec::new();
+    for row in rows {
+        let candidate = ProvisionalSegmentCleanupCandidate {
+            range_start_block: row.get("range_start_block"),
+            range_end_block: row.get("range_end_block"),
+            segment_finality: row.get("segment_finality"),
+            anchor_block_number: row.get("anchor_block_number"),
+        };
+        match plan_provisional_segment_cleanup(finalized_height, &candidate) {
+            ProvisionalSegmentCleanupDecision::Finalize => finalize.push(row.get("id")),
+            ProvisionalSegmentCleanupDecision::Invalid => invalid.push(row.get("id")),
+            ProvisionalSegmentCleanupDecision::Keep => {}
+        }
+    }
+    Ok((finalize, invalid))
+}
+
+async fn mark_segments_invalid(
+    transaction: &mut Transaction<'_, Postgres>,
+    segment_ids: &[String],
+    reason: &str,
+) -> Result<usize, PostgresIndexerRunnerStoreError> {
+    if segment_ids.is_empty() {
+        return Ok(0);
+    }
+    let result = sqlx::query(
+        "UPDATE degov_provisional_segment
+         SET status = 'invalid',
+             error = $2,
+             updated_at = now()
+         WHERE status = 'available'
+           AND id = ANY($1::TEXT[])",
+    )
+    .bind(segment_ids)
+    .bind(reason)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(result.rows_affected() as usize)
 }
 
 async fn mark_segments_finalized(
@@ -514,6 +581,7 @@ async fn mark_available_segments_invalid(
     transaction: &mut Transaction<'_, Postgres>,
     scope: &ProvisionalRollbackScope,
     reason: &str,
+    from_block: i64,
 ) -> Result<usize, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(
         "UPDATE degov_provisional_segment
@@ -524,13 +592,15 @@ async fn mark_available_segments_invalid(
            AND dao_code = $1
            AND chain_id IS NOT DISTINCT FROM $2
            AND contract_set_id = $3
-           AND ($4::TEXT IS NULL OR source = $4)",
+           AND ($4::TEXT IS NULL OR source = $4)
+           AND range_end_block >= $6::NUMERIC(78, 0)",
     )
     .bind(&scope.dao_code)
     .bind(scope.chain_id)
     .bind(&scope.contract_set_id)
     .bind(scope.source.as_deref())
     .bind(reason)
+    .bind(from_block)
     .execute(&mut **transaction)
     .await?;
 
@@ -541,6 +611,7 @@ async fn mark_available_overlay_table_invalid(
     transaction: &mut Transaction<'_, Postgres>,
     table: &str,
     scope: &ProvisionalRollbackScope,
+    from_block: i64,
 ) -> Result<usize, PostgresIndexerRunnerStoreError> {
     let result = sqlx::query(&format!(
         "UPDATE {table}
@@ -550,12 +621,14 @@ async fn mark_available_overlay_table_invalid(
            AND dao_code = $1
            AND chain_id IS NOT DISTINCT FROM $2
            AND contract_set_id = $3
-           AND ($4::TEXT IS NULL OR source = $4)"
+           AND ($4::TEXT IS NULL OR source = $4)
+           AND (anchor_block_number IS NULL OR anchor_block_number >= $5::NUMERIC(78, 0))"
     ))
     .bind(&scope.dao_code)
     .bind(scope.chain_id)
     .bind(&scope.contract_set_id)
     .bind(scope.source.as_deref())
+    .bind(from_block)
     .execute(&mut **transaction)
     .await?;
 

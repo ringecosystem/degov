@@ -1,16 +1,15 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig, AdaptiveChunkSizingReason,
     BatchReadPlanConfig, ChainContracts, ChainFamily, ChainIdentityConfig, DaoContractAddresses,
-    DaoEventDecodeError, DaoLogSource, DatalensConfig, DatalensError, DatalensFinality,
-    DatalensLogQueryCacheSummary, DatalensLogQueryReader, DatalensLogQueryResult,
-    DatalensWarmupEffectivenessAggregation, DatasetKeyConfig, DecodedDaoEvent,
-    DecodedGovernorEvent, DecodedTokenEvent, GovernanceTokenStandard, InMemoryIndexerRunnerStore,
-    IndexerCheckpointIdentity, IndexerEventDecoder, IndexerRunner, IndexerRunnerContexts,
-    IndexerRunnerOptions, NormalizedEvmLog, PartialChainReadFailureReport,
+    DaoEventDecodeError, DaoLogRequest, DaoLogSource, DatalensConfig, DatalensError,
+    DatalensFinality, DatalensIncomplete, DatalensLogQueryCacheSummary, DatalensLogQueryReader,
+    DatalensLogQueryResult, DatalensQueryEffectivenessAggregation, DatalensServe, DatasetKeyConfig,
+    DecodedDaoEvent, DecodedGovernorEvent, DecodedTokenEvent, GovernanceTokenStandard,
+    InMemoryIndexerRunnerStore, IndexerCheckpointIdentity, IndexerEventDecoder, IndexerRunner,
+    IndexerRunnerContexts, IndexerRunnerOptions, NormalizedEvmLog, PartialChainReadFailureReport,
     ProposalProjectionContext, ProposalTimestampBackfillCandidate, ProposalTimestampBackfillConfig,
     QueryLimitConfig, SecretString, TokenProjectionContext, VoteCastEvent, VoteProjectionContext,
     page_rows,
@@ -57,6 +56,32 @@ fn test_page_rows_rejects_malformed_response() {
         error
             .to_string()
             .contains("Datalens log query returned invalid rows payload")
+    );
+}
+
+#[test]
+fn test_runner_checkpoint_stops_at_partial_serve() {
+    let mut options = options();
+    options.datalens_config.query_limits.block_range_limit = 10;
+    options.adaptive_chunk_sizer = AdaptiveChunkSizerConfig::for_max_chunk_size(10);
+    let mut runner = IndexerRunner::new(
+        options,
+        contexts(),
+        PartialServeReader,
+        InMemoryIndexerRunnerStore::new(identity(), 1),
+        ScriptedDecoder,
+    );
+
+    let report = runner
+        .run_to_target(10)
+        .expect("partial serve waits instead of skipping ahead");
+
+    assert!(report.follow_wait);
+    assert_eq!(report.chunks_processed, 1);
+    assert_eq!(report.last_progress.processed_height, Some(4));
+    assert_eq!(
+        runner.store().checkpoint().expect("checkpoint").next_block,
+        5
     );
 }
 
@@ -1219,31 +1244,35 @@ fn test_runner_backfills_proposal_timestamp_after_chunk_commit() {
     );
 }
 
+struct PartialServeReader;
+
+impl DatalensLogQueryReader for PartialServeReader {
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
+        let mut result = DatalensLogQueryResult::rows_only(Value::Array(Vec::new()));
+        result.serve = DatalensServe::ThroughBlock(request.start + 3);
+        result.incomplete = Some(DatalensIncomplete::Pending);
+        Ok(result)
+    }
+}
+
 struct ScriptedDatalensReader {
     rows: Vec<Vec<Value>>,
 }
 
 impl DatalensLogQueryReader for ScriptedDatalensReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        let addresses = input
-            .selector
-            .evm_logs
-            .as_ref()
-            .map(|selector| {
-                selector
-                    .addresses
-                    .iter()
-                    .map(|address| address.to_ascii_lowercase())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let topic0_values = input
-            .selector
-            .evm_logs
-            .as_ref()
-            .and_then(|selector| selector.topics.first())
-            .cloned()
-            .unwrap_or_default();
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
+        let addresses = request
+            .addresses
+            .iter()
+            .map(|address| address.to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        let topic0_values = request.topic0s.clone();
         let rows = self
             .rows
             .iter()
@@ -1264,7 +1293,7 @@ impl DatalensLogQueryReader for ScriptedDatalensReader {
                     .and_then(Value::as_str)
                     .unwrap_or_default();
 
-                (input.range.start..=input.range.end).contains(&block_number)
+                (request.start..=request.end).contains(&block_number)
                     && (addresses.is_empty()
                         || addresses.iter().any(|candidate| candidate == &address))
                     && (topic0_values.is_empty()
@@ -1280,7 +1309,10 @@ impl DatalensLogQueryReader for ScriptedDatalensReader {
 struct FailingDatalensReader;
 
 impl DatalensLogQueryReader for FailingDatalensReader {
-    fn query_logs(&mut self, _input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
+    fn query_logs(
+        &mut self,
+        _request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
         Err(DatalensError::Query(
             r#"datalens HTTP error 429: {"error":{"kind":"rate_limited","message":"rate limited"}}"#
                 .to_owned(),
@@ -1366,13 +1398,16 @@ impl ProviderLimitDatalensReader {
 }
 
 impl DatalensLogQueryReader for ProviderLimitDatalensReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        let range = (input.range.start, input.range.end);
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
+        let range = (request.start, request.end);
         self.observed_ranges
             .lock()
             .expect("observed ranges")
             .push(range);
-        let block_count = input.range.end - input.range.start + 1;
+        let block_count = request.end - request.start + 1;
         if block_count > self.max_successful_blocks {
             return Err(DatalensError::Query(
                 r#"datalens HTTP error 429: {"error":{"kind":"provider_limit","message":"query returns too many logs, narrow your filter: 20000"}}"#
@@ -1399,13 +1434,16 @@ impl TransientDatalensReader {
 }
 
 impl DatalensLogQueryReader for TransientDatalensReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        let range = (input.range.start, input.range.end);
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
+        let range = (request.start, request.end);
         self.observed_ranges
             .lock()
             .expect("observed ranges")
             .push(range);
-        let block_count = input.range.end - input.range.start + 1;
+        let block_count = request.end - request.start + 1;
         if block_count > self.max_successful_blocks {
             return Err(DatalensError::Query(
                 r#"datalens HTTP error 502: {"error":{"kind":"bad_gateway","message":"bad gateway"}}"#
@@ -1641,7 +1679,6 @@ fn options() -> IndexerRunnerOptions {
             query_limits: QueryLimitConfig {
                 block_range_limit: 1,
             },
-            warmup: Default::default(),
             dao_contracts: Some(addresses()),
             chains: Vec::new(),
         },
@@ -1670,14 +1707,14 @@ fn adaptive_config(initial_chunk_size: u32, max_chunk_size: u32) -> AdaptiveChun
 }
 
 fn adaptive_feedback(
-    warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
+    query_effectiveness: DatalensQueryEffectivenessAggregation,
     query_duration: Duration,
 ) -> AdaptiveChunkFeedback {
-    adaptive_feedback_with_rows(warmup_effectiveness, query_duration, 0)
+    adaptive_feedback_with_rows(query_effectiveness, query_duration, 0)
 }
 
 fn adaptive_feedback_with_rows(
-    warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
+    query_effectiveness: DatalensQueryEffectivenessAggregation,
     query_duration: Duration,
     returned_row_count: usize,
 ) -> AdaptiveChunkFeedback {
@@ -1685,11 +1722,11 @@ fn adaptive_feedback_with_rows(
         returned_row_count,
         local_processing_write_duration: Duration::from_millis(20),
         read_duration: query_duration,
-        warmup_effectiveness,
+        query_effectiveness,
     }
 }
 
-fn cache_full_hit() -> DatalensWarmupEffectivenessAggregation {
+fn cache_full_hit() -> DatalensQueryEffectivenessAggregation {
     cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
         &json!({
             "hit_ranges": [{ "kind": "block", "start": 1, "end": 100 }],
@@ -1699,7 +1736,7 @@ fn cache_full_hit() -> DatalensWarmupEffectivenessAggregation {
     ))
 }
 
-fn cache_partial_hit() -> DatalensWarmupEffectivenessAggregation {
+fn cache_partial_hit() -> DatalensQueryEffectivenessAggregation {
     cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
         &json!({
             "hit_ranges": [{ "kind": "block", "start": 1, "end": 50 }],
@@ -1709,7 +1746,7 @@ fn cache_partial_hit() -> DatalensWarmupEffectivenessAggregation {
     ))
 }
 
-fn cache_miss() -> DatalensWarmupEffectivenessAggregation {
+fn cache_miss() -> DatalensQueryEffectivenessAggregation {
     cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
         &json!({
             "hit_ranges": [],
@@ -1719,7 +1756,7 @@ fn cache_miss() -> DatalensWarmupEffectivenessAggregation {
     ))
 }
 
-fn cache_provider_fill() -> DatalensWarmupEffectivenessAggregation {
+fn cache_provider_fill() -> DatalensQueryEffectivenessAggregation {
     cache_aggregation(DatalensLogQueryCacheSummary::from_datalens_cache_json(
         &json!({
             "hit_ranges": [],
@@ -1729,11 +1766,11 @@ fn cache_provider_fill() -> DatalensWarmupEffectivenessAggregation {
     ))
 }
 
-fn cache_unavailable() -> DatalensWarmupEffectivenessAggregation {
+fn cache_unavailable() -> DatalensQueryEffectivenessAggregation {
     cache_aggregation(DatalensLogQueryCacheSummary::unavailable())
 }
 
-fn cache_full_hit_with_unavailable() -> DatalensWarmupEffectivenessAggregation {
+fn cache_full_hit_with_unavailable() -> DatalensQueryEffectivenessAggregation {
     let mut aggregation = cache_full_hit();
     aggregation.record_query(
         DatalensLogQueryCacheSummary::unavailable(),
@@ -1742,10 +1779,8 @@ fn cache_full_hit_with_unavailable() -> DatalensWarmupEffectivenessAggregation {
     aggregation
 }
 
-fn cache_aggregation(
-    cache: DatalensLogQueryCacheSummary,
-) -> DatalensWarmupEffectivenessAggregation {
-    let mut aggregation = DatalensWarmupEffectivenessAggregation::new();
+fn cache_aggregation(cache: DatalensLogQueryCacheSummary) -> DatalensQueryEffectivenessAggregation {
+    let mut aggregation = DatalensQueryEffectivenessAggregation::new();
     aggregation.record_query(cache, Duration::from_millis(20));
     aggregation
 }

@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use datalens_sdk::native::{QueryInput, QueryRangeKindInput, SelectorKindInput};
 use degov_datalens_indexer::{
     ChainFamily, ChainIdentityConfig, DaoContractAddresses, DaoLogAddressSource, DaoLogQueryPlan,
-    DaoLogSource, DatalensConfig, DatalensError, DatalensFinality, DatalensLogQueryReader,
-    DatalensLogQueryResult, DatalensProvisionalFinality, DatalensProvisionalLogQueryReader,
-    DatalensProvisionalLogQueryResult, DatasetKeyConfig, GovernanceTokenStandard, QueryLimitConfig,
-    SecretString, fetch_dao_log_pages, fetch_provisional_dao_log_pages, plan_dao_log_queries,
+    DaoLogRequest, DaoLogSource, DatalensConfig, DatalensError, DatalensFinality,
+    DatalensLogQueryReader, DatalensLogQueryResult, DatalensProvisionalFinality,
+    DatalensProvisionalLogQueryReader, DatalensProvisionalLogQueryResult, DatasetKeyConfig,
+    GovernanceTokenStandard, QueryLimitConfig, SecretString, fetch_dao_log_pages,
+    fetch_provisional_dao_log_pages, plan_dao_log_queries,
 };
 
 #[test]
@@ -54,9 +54,8 @@ fn test_plan_dao_log_queries_scopes_governance_selector_to_dao_addresses() {
     let addresses = addresses();
     let plans = plan_dao_log_queries(&config, &addresses, 100, 199).expect("plans");
 
-    let evm_logs = plans[0].input.selector.evm_logs.as_ref().expect("evm logs");
     assert_eq!(
-        evm_logs.addresses,
+        plans[0].request.addresses,
         vec![
             addresses.governor,
             addresses.governor_token,
@@ -64,12 +63,12 @@ fn test_plan_dao_log_queries_scopes_governance_selector_to_dao_addresses() {
         ]
     );
     assert_eq!(
-        evm_logs.topics,
-        vec![topic0_union(&[
+        plans[0].request.topic0s,
+        topic0_union(&[
             GOVERNOR_TOPIC0_VALUES,
             TIMELOCK_TOPIC0_VALUES,
             GOVERNOR_TOKEN_TOPIC0_VALUES,
-        ])]
+        ])
     );
 }
 
@@ -113,16 +112,7 @@ fn test_plan_dao_log_queries_chunks_ranges_by_config_limit() {
 
     assert_eq!(ranges, vec![(100, 149), (150, 199), (200, 220)]);
     assert!(plans.iter().all(|plan| plan.sources.len() == 3));
-    assert!(plans.iter().all(|plan| {
-        plan.input
-            .selector
-            .evm_logs
-            .as_ref()
-            .expect("evm logs")
-            .addresses
-            .len()
-            == 3
-    }));
+    assert!(plans.iter().all(|plan| plan.request.addresses.len() == 3));
 }
 
 #[test]
@@ -143,7 +133,7 @@ fn test_plan_dao_log_queries_uses_durable_only_finality_for_final_indexing() {
     let config = config(1_000, DatalensFinality::DurableOnly);
     let plans = plan_dao_log_queries(&config, &addresses(), 100, 100).expect("plans");
 
-    assert_eq!(plans[0].input.finality.as_deref(), Some("durable_only"));
+    assert_eq!(plans[0].request.finality, "durable_only");
 }
 
 #[test]
@@ -155,13 +145,13 @@ fn test_fetch_provisional_dao_log_pages_uses_explicit_safe_to_latest_finality() 
     let pages = fetch_provisional_dao_log_pages(
         &mut reader,
         &plans[..1],
-        DatalensProvisionalFinality::SafeToLatest,
+        DatalensProvisionalFinality::LatestOnly,
     )
     .expect("pages");
 
     assert_eq!(pages.len(), 1);
     assert_eq!(reader.calls.len(), 1);
-    assert_eq!(reader.calls[0].finality.as_deref(), Some("safe_to_latest"));
+    assert_eq!(reader.calls[0].finality, "latest_only");
 }
 
 #[test]
@@ -173,7 +163,7 @@ fn test_fetch_dao_log_pages_keeps_final_path_on_safe_query_api() {
     fetch_dao_log_pages(&mut reader, &plans[..1]).expect("pages");
 
     assert_eq!(reader.calls.len(), 1);
-    assert_eq!(reader.calls[0].finality.as_deref(), Some("durable_only"));
+    assert_eq!(reader.calls[0].finality, "durable_only");
 }
 
 #[test]
@@ -225,25 +215,19 @@ fn assert_query(
     sources: &[DaoLogAddressSource],
     addresses: &[String],
     topic0_values: &[String],
-    from_block: i32,
-    to_block: i32,
+    from_block: i64,
+    to_block: i64,
     finality: &str,
 ) {
     assert_eq!(plan.sources, sources);
     assert_eq!(plan.from_block, from_block);
     assert_eq!(plan.to_block, to_block);
-    assert_eq!(plan.input.chain.configured_name, "ethereum");
-    assert_eq!(plan.input.dataset_key.family, "evm");
-    assert_eq!(plan.input.dataset_key.name, "logs");
-    assert_eq!(plan.input.selector.kind, SelectorKindInput::EvmLogs);
-    assert_eq!(plan.input.range.kind, QueryRangeKindInput::Block);
-    assert_eq!(plan.input.range.start, u64::try_from(from_block).unwrap());
-    assert_eq!(plan.input.range.end, u64::try_from(to_block).unwrap());
-    assert_eq!(plan.input.finality.as_deref(), Some(finality));
-
-    let evm_logs = plan.input.selector.evm_logs.as_ref().expect("evm logs");
-    assert_eq!(evm_logs.addresses, addresses);
-    assert_eq!(evm_logs.topics, vec![topic0_values.to_vec()]);
+    assert_eq!(plan.request.chain, "ethereum");
+    assert_eq!(plan.request.start, u64::try_from(from_block).unwrap());
+    assert_eq!(plan.request.end, u64::try_from(to_block).unwrap());
+    assert_eq!(plan.request.finality, finality);
+    assert_eq!(plan.request.addresses, addresses);
+    assert_eq!(plan.request.topic0s, topic0_values);
 }
 
 fn topic0_union(topic_groups: &[&[&str]]) -> Vec<String> {
@@ -274,7 +258,6 @@ fn config(block_range_limit: u32, finality: DatalensFinality) -> DatalensConfig 
             name: "logs".to_owned(),
         },
         query_limits: QueryLimitConfig { block_range_limit },
-        warmup: Default::default(),
         dao_contracts: None,
         chains: Vec::new(),
     }
@@ -323,7 +306,7 @@ const TIMELOCK_TOPIC0_VALUES: &[&str] = &[
 ];
 
 struct MockLogReader {
-    calls: Vec<QueryInput>,
+    calls: Vec<DaoLogRequest>,
     results: Vec<Result<serde_json::Value, DatalensError>>,
 }
 
@@ -337,8 +320,11 @@ impl MockLogReader {
 }
 
 impl DatalensLogQueryReader for MockLogReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        self.calls.push(input);
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
+        self.calls.push(request.clone());
         self.results
             .remove(0)
             .map(DatalensLogQueryResult::rows_only)
@@ -346,7 +332,7 @@ impl DatalensLogQueryReader for MockLogReader {
 }
 
 struct MockProvisionalLogReader {
-    calls: Vec<QueryInput>,
+    calls: Vec<DaoLogRequest>,
     results: Vec<Result<serde_json::Value, DatalensError>>,
 }
 
@@ -362,9 +348,9 @@ impl MockProvisionalLogReader {
 impl DatalensProvisionalLogQueryReader for MockProvisionalLogReader {
     fn query_provisional_logs(
         &mut self,
-        input: QueryInput,
+        request: &DaoLogRequest,
     ) -> Result<DatalensProvisionalLogQueryResult, DatalensError> {
-        self.calls.push(input);
+        self.calls.push(request.clone());
         self.results
             .remove(0)
             .map(DatalensProvisionalLogQueryResult::rows_only)

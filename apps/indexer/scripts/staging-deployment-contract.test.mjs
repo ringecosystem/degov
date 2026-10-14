@@ -73,8 +73,15 @@ assert.equal(contract.runtimeEnv.DEGOV_INDEXER_CONTRACT_SET_MODE, "all");
 assert.equal(contract.runtimeEnv.DEGOV_INDEXER_TARGET_HEIGHT, "latest");
 assert.equal(contract.runtimeEnv.DEGOV_INDEXER_RUN_ONCE, "false");
 assert.equal(contract.runtimeEnv.DATALENS_APPLICATION, contract.datalens.application);
-assert.equal(contract.runtimeEnv.DATALENS_DATASET_FAMILY, contract.datalens.dataset.family);
-assert.equal(contract.runtimeEnv.DATALENS_DATASET_NAME, contract.datalens.dataset.name);
+assert.equal(contract.datalens.dataset, "evm.logs");
+assert.equal(contract.runtimeEnv.DATALENS_DATASET_FAMILY, undefined);
+assert.equal(contract.runtimeEnv.DATALENS_DATASET_NAME, undefined);
+assert.equal(
+  contract.runtimeEnv.DEGOV_REALTIME_DATALENS_APPLICATION,
+  contract.datalens.realtimeApplication,
+);
+assert.equal(contract.datalens.realtimeApplication, "degov-realtime");
+assert.equal(contract.runtimeEnv.DEGOV_REALTIME_DATALENS_TOKEN, undefined);
 assert.equal(contract.runtimeEnv.DATALENS_CHAINS_JSON, undefined);
 assert.equal(contract.runtimeEnv.DATALENS_GOVERNOR_ADDRESS, undefined);
 assert.equal(contract.runtimeEnv.DATALENS_GOVERNOR_TOKEN_ADDRESS, undefined);

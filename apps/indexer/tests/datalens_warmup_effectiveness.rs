@@ -1,11 +1,10 @@
 use std::time::Duration;
 
-use datalens_sdk::native::QueryInput;
 use degov_datalens_indexer::{
-    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DatalensConfig, DatalensError,
-    DatalensFinality, DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary,
-    DatalensLogQueryReader, DatalensLogQueryResult, DatalensWarmupEffectivenessAggregation,
-    DatalensWarmupEffectivenessLogFields, DatasetKeyConfig, GovernanceTokenStandard,
+    ChainFamily, ChainIdentityConfig, DaoContractAddresses, DaoLogRequest, DatalensConfig,
+    DatalensError, DatalensFinality, DatalensLogQueryCacheOutcome, DatalensLogQueryCacheSummary,
+    DatalensLogQueryReader, DatalensLogQueryResult, DatalensQueryEffectivenessAggregation,
+    DatalensQueryEffectivenessLogFields, DatalensServe, DatasetKeyConfig, GovernanceTokenStandard,
     IndexerCheckpointIdentity, QueryLimitConfig, SecretString, fetch_dao_log_pages,
     plan_dao_log_queries,
 };
@@ -57,8 +56,8 @@ fn test_query_cache_summary_marks_missing_fields_unavailable() {
 }
 
 #[test]
-fn test_warmup_effectiveness_aggregation_builds_operator_log_fields() {
-    let mut aggregation = DatalensWarmupEffectivenessAggregation::new();
+fn test_query_effectiveness_aggregation_builds_operator_log_fields() {
+    let mut aggregation = DatalensQueryEffectivenessAggregation::new();
     aggregation.record_query(
         DatalensLogQueryCacheSummary::from_datalens_cache_json(&json!({
             "hit_ranges": [{ "kind": "block", "start": 100, "end": 109 }],
@@ -81,7 +80,7 @@ fn test_warmup_effectiveness_aggregation_builds_operator_log_fields() {
     );
     aggregation.record_provider_limit();
 
-    let fields = DatalensWarmupEffectivenessLogFields::from_aggregation(
+    let fields = DatalensQueryEffectivenessLogFields::from_aggregation(
         &identity(),
         "selector-abc",
         Some(100),
@@ -117,6 +116,8 @@ fn test_fetch_dao_log_pages_preserves_cache_summary() {
             "missing_ranges": [{ "kind": "block", "start": 100, "end": 100 }],
             "provider_fill_ranges": [{ "kind": "block", "start": 100, "end": 100 }]
         })),
+        serve: DatalensServe::ThroughRequest,
+        incomplete: None,
     })];
     results.extend((1..plans.len()).map(|_| {
         Ok(DatalensLogQueryResult {
@@ -126,6 +127,8 @@ fn test_fetch_dao_log_pages_preserves_cache_summary() {
                 "missing_ranges": [],
                 "provider_fill_ranges": []
             })),
+            serve: DatalensServe::ThroughRequest,
+            incomplete: None,
         })
     }));
     let mut reader = MockLogReader::new(results);
@@ -171,7 +174,6 @@ fn config() -> DatalensConfig {
         query_limits: QueryLimitConfig {
             block_range_limit: 1_000,
         },
-        warmup: Default::default(),
         dao_contracts: None,
         chains: Vec::new(),
     }
@@ -187,7 +189,7 @@ fn addresses() -> DaoContractAddresses {
 }
 
 struct MockLogReader {
-    calls: Vec<QueryInput>,
+    calls: Vec<DaoLogRequest>,
     results: Vec<Result<DatalensLogQueryResult, DatalensError>>,
 }
 
@@ -201,8 +203,11 @@ impl MockLogReader {
 }
 
 impl DatalensLogQueryReader for MockLogReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError> {
-        self.calls.push(input);
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError> {
+        self.calls.push(request.clone());
         self.results.remove(0)
     }
 }

@@ -130,7 +130,7 @@ async fn test_run_path_processes_datalens_pages_into_postgres() -> Result<(), Bo
 
     run_indexer_command(&database.database_url, &datalens.endpoint).await?;
 
-    assert_eq!(datalens.head_count.load(Ordering::Relaxed), 1);
+    assert_eq!(datalens.head_count.load(Ordering::Relaxed), 3);
     assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
     assert_table_count(&database.pool, "proposal_created", 1).await?;
     assert_table_count(&database.pool, "proposal", 1).await?;
@@ -368,7 +368,7 @@ async fn test_run_path_all_mode_resumes_existing_scope_and_starts_new_scope()
 
     run_indexer_all_contract_sets_command(&database.database_url, &datalens.endpoint).await?;
 
-    assert_eq!(datalens.head_count.load(Ordering::Relaxed), 0);
+    assert_eq!(datalens.head_count.load(Ordering::Relaxed), 2);
     assert_eq!(datalens.query_count.load(Ordering::Relaxed), 1);
     assert_checkpoint_scope(&database.pool, CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
     assert_checkpoint_scope(&database.pool, SECOND_CONTRACT_SET_ID, 3, Some(2), Some(2)).await?;
@@ -4021,44 +4021,58 @@ fn handle_datalens_request(
     query_count: &AtomicU64,
 ) {
     let request = read_http_request(&mut stream);
-    let body = if request.contains("discovery") {
-        json!({
-            "data": {
-                "discovery": {
-                    "chains": []
-                }
-            }
-        })
-    } else if request.starts_with("GET /v1/chains/ethereum/head?finality=safe ") {
+    let body = if request.starts_with("GET /v1/heads/") {
         head_count.fetch_add(1, Ordering::Relaxed);
         json!({
-            "chain": {
-                "configured_name": "ethereum"
-            },
-            "height": 2,
-            "finality": "safe",
-            "range_kind": "block"
+            "chain": "ethereum",
+            "latest": 2,
+            "latest_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "safe": 2,
+            "finalized": 2
         })
     } else {
         query_count.fetch_add(1, Ordering::Relaxed);
         let request_body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
+        let parsed = serde_json::from_str::<Value>(request_body).unwrap_or(Value::Null);
+        let start = parsed
+            .pointer("/range/start")
+            .and_then(Value::as_u64)
+            .unwrap_or(1);
+        let end = parsed
+            .pointer("/range/end")
+            .and_then(Value::as_u64)
+            .unwrap_or(2);
         let mut rows = Vec::new();
-        if request_matches_addresses(&request_body, &[GOVERNOR, SECOND_GOVERNOR]) {
+        if request_matches_addresses(request_body, &[GOVERNOR, SECOND_GOVERNOR]) {
             rows.extend(matching_datalens_rows(request_body, governor_rows));
         }
-        if request_matches_addresses(&request_body, &[TOKEN, SECOND_TOKEN]) {
+        if request_matches_addresses(request_body, &[TOKEN, SECOND_TOKEN]) {
             rows.extend(matching_datalens_rows(request_body, token_rows));
         }
-        if request_matches_addresses(&request_body, &[TIMELOCK, SECOND_TIMELOCK]) {
+        if request_matches_addresses(request_body, &[TIMELOCK, SECOND_TIMELOCK]) {
             rows.extend(matching_datalens_rows(request_body, timelock_rows));
         }
+        rows.retain(|row| {
+            row.get("block_number")
+                .and_then(Value::as_u64)
+                .is_some_and(|block| (start..=end).contains(&block))
+        });
 
         json!({
-            "chain": {},
-            "dataset_key": "evm.logs",
-            "range": {},
-            "cache": {},
-            "rows": rows
+            "chain": "ethereum",
+            "dataset": "evm.logs",
+            "requested": {"start": start, "end": end},
+            "served": {"start": start, "end": end},
+            "next_start": null,
+            "incomplete_reason": null,
+            "segments": [{
+                "start": start,
+                "end": end,
+                "source": "durable",
+                "finality": "safe"
+            }],
+            "rows": rows,
+            "page": {}
         })
     }
     .to_string();
