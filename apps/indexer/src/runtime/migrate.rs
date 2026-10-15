@@ -992,27 +992,31 @@ async fn repair_deferred_candidate_index_bloat_once(connection: &mut PgConnectio
         return Ok(());
     }
 
-    let (live_rows, index_bytes): (f64, i64) = sqlx::query_as(
-        "SELECT
-            COALESCE(
-                (SELECT reltuples
-                 FROM pg_class
-                 WHERE relname = 'onchain_refresh_deferred_candidate'),
-                0
-            ) AS live_rows,
-            COALESCE(
-                (SELECT SUM(pg_relation_size(indexrelid))::BIGINT
-                 FROM pg_index
-                 JOIN pg_class ON pg_class.oid = pg_index.indexrelid
-                 WHERE pg_class.relname LIKE 'onchain_refresh_deferred_candidate%'),
-                0
-            ) AS index_bytes",
+    let live_rows = sqlx::query_scalar::<_, f32>(
+        "SELECT COALESCE(MAX(reltuples), 0)::REAL
+         FROM pg_class
+         WHERE relname = 'onchain_refresh_deferred_candidate'
+           AND relkind = 'r'",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("measure onchain refresh deferred candidate row estimate")?;
+
+    let index_bytes = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(SUM(pg_relation_size(indexrelid)), 0)::BIGINT
+         FROM pg_index
+         WHERE indrelid IN (
+            SELECT oid
+            FROM pg_class
+            WHERE relname = 'onchain_refresh_deferred_candidate'
+              AND relkind = 'r'
+         )",
     )
     .fetch_one(&mut *connection)
     .await
     .context("measure onchain refresh deferred candidate index footprint")?;
 
-    if live_rows <= 10_000 && index_bytes >= 1_000_000_000 {
+    if live_rows <= 10_000_f32 && index_bytes >= 1_000_000_000 {
         for index_name in [
             "onchain_refresh_deferred_candidate_account_unique",
             "onchain_refresh_deferred_candidate_drain_idx",

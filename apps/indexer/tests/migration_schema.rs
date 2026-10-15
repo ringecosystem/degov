@@ -1081,7 +1081,8 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
             "0008_indexer_latest_head.sql",
             "0009_provisional_proposal_event_fields.sql",
             "0010_provisional_vote_overlays.sql",
-            "0011_delegate_profile_materialization.sql"
+            "0011_delegate_profile_materialization.sql",
+            "0012_provisional_cleanup_indexes.sql"
         ]
     );
 
@@ -1122,6 +1123,13 @@ fn test_indexer_keeps_init_migration_stable_and_appends_runtime_markers()
         "execute_concurrent_runtime_index(\n        connection,\n        \"onchain_refresh_deferred_candidate_scope_drain_idx\",\n        \"CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_deferred_candidate_scope_drain_idx"
     ));
     assert!(runtime_migration.contains("contributor_onchain_refresh_coverage_scope_idx"));
+    assert!(runtime_migration.contains("degov_provisional_segment_available_scope_range_idx"));
+    assert!(runtime_migration.contains("degov_provisional_segment_available_source_range_idx"));
+    assert!(runtime_migration.contains("degov_provisional_segment_available_coverage_idx"));
+    assert!(runtime_migration.contains("onchain_refresh_task_active_account_lookup_idx"));
+    assert!(runtime_migration.contains("onchain_refresh_deferred_candidate_account_lookup_idx"));
+    assert!(runtime_migration.contains("purge_stale_provisional_records"));
+    assert!(runtime_migration.contains("deferred_candidate_index_reindex_v1"));
     assert!(runtime_migration.contains("release_runtime_migration_lock"));
     assert!(runtime_migration.contains(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS provisional_delegate_live_graphql_scope_idx
