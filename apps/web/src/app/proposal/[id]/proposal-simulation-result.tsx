@@ -38,7 +38,7 @@ export function ProposalSimulationResult({
 
   return (
     <div
-      className="max-w-[520px] rounded-[14px] bg-card p-[12px] text-[12px] leading-[1.5] shadow-card"
+      className="max-w-[520px] rounded-[14px] bg-card-background p-[14px] text-[12px] leading-[1.5]"
       aria-live="polite"
     >
       {hasXAccountAction && (

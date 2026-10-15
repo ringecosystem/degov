@@ -30,6 +30,7 @@ export function useMyVotes(): UseVotesReturn {
   const {
     data: votes,
     isLoading: isVotesLoading,
+    isFetching: isVotesFetching,
     error,
     refetch,
   } = useCurrentVotingPower(address as Address);
@@ -40,7 +41,7 @@ export function useMyVotes(): UseVotesReturn {
       : undefined;
 
   const hasEnoughVotes =
-    votes && governanceParams?.proposalThreshold
+    !isNil(votes) && !isNil(governanceParams?.proposalThreshold)
       ? votes >= governanceParams.proposalThreshold
       : false;
 
@@ -57,7 +58,7 @@ export function useMyVotes(): UseVotesReturn {
     hasEnoughVotes,
     refetch,
     isLoading: isVotesLoading || isTokenLoading || isParamsLoading,
-    isFetching: isVotesLoading,
+    isFetching: isVotesFetching,
     error,
   };
 }

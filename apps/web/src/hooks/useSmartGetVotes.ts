@@ -16,6 +16,7 @@ interface UseSmartGetVotesProps {
 interface SmartGetVotesResult {
   data: bigint | undefined;
   isLoading: boolean;
+  isFetching: boolean;
   isError: boolean;
   error: Error | null;
   refetch: () => void;
@@ -87,6 +88,7 @@ export function useSmartGetVotes({
   const {
     data: votingPowerData,
     isLoading: isVotingPowerLoading,
+    isFetching: isVotingPowerFetching,
     refetch,
   } = useReadContracts({
     contracts: [
@@ -121,6 +123,7 @@ export function useSmartGetVotes({
     return {
       data: undefined,
       isLoading: true,
+      isFetching: isVotingPowerFetching,
       isError: false,
       error: null,
       refetch,
@@ -134,6 +137,7 @@ export function useSmartGetVotes({
   ) => ({
     data,
     isLoading: false,
+    isFetching: isVotingPowerFetching,
     isError,
     error,
     refetch,

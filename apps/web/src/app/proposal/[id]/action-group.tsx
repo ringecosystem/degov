@@ -6,6 +6,15 @@ import { toast } from "react-toastify";
 import { useAccount, useReadContract } from "wagmi";
 
 import { TransactionToast } from "@/components/transaction-toast";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { abi as GovernorAbi } from "@/config/abi/governor";
 import useCancelProposal from "@/hooks/useCancelProposal";
@@ -52,6 +61,7 @@ export default function ActionGroup({
   onRefetch,
 }: ActionGroupProps) {
   const t = useTranslations("proposalDetail.toasts");
+  const simulationT = useTranslations("proposalDetail.simulation");
   const { isConnected, address } = useAccount();
   const queryClient = useQueryClient();
   const daoConfig = useDaoConfig();
@@ -65,6 +75,7 @@ export default function ActionGroup({
   const [executeHash, setExecuteHash] = useState<`0x${string}` | null>(null);
   const [cancelHash, setCancelHash] = useState<`0x${string}` | null>(null);
   const [cancelProposalOpen, setCancelProposalOpen] = useState(false);
+  const [simulationOpen, setSimulationOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<bigint>(() =>
     BigInt(Date.now())
   );
@@ -380,6 +391,7 @@ export default function ActionGroup({
           handleExecuteProposal();
           break;
         case "simulate":
+          setSimulationOpen(true);
           simulate();
           break;
       }
@@ -424,11 +436,41 @@ export default function ActionGroup({
           showCancel={status === ProposalState.Pending && isConnected}
         />
       </div>
-      <ProposalSimulationResult
-        result={simulationResult}
-        error={simulationError}
-        hasXAccountAction={canSimulate && hasXAccountAction}
-      />
+      <Dialog open={simulationOpen} onOpenChange={setSimulationOpen}>
+        <DialogContent className="w-[560px] max-w-[calc(100vw-24px)] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
+          <DialogHeader>
+            <DialogTitle>{simulationT("title")}</DialogTitle>
+            <DialogDescription>{simulationT("description")}</DialogDescription>
+          </DialogHeader>
+          {isSimulating ? (
+            <div
+              className="py-[36px] text-center text-[14px] text-muted-foreground"
+              aria-live="polite"
+            >
+              {simulationT("running")}
+            </div>
+          ) : (
+            <ProposalSimulationResult
+              result={simulationResult}
+              error={simulationError}
+              hasXAccountAction={canSimulate && hasXAccountAction}
+            />
+          )}
+          <DialogFooter>
+            <Button
+              className="w-full rounded-[100px] sm:w-auto"
+              isLoading={isPendingExecute || Boolean(executeHash)}
+              disabled={!canExecute}
+              onClick={() => {
+                setSimulationOpen(false);
+                handleAction("execute");
+              }}
+            >
+              {simulationT("execute")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Voting
         open={voting}
         onOpenChange={setVoting}
