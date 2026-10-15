@@ -105,11 +105,13 @@ function ProposalEditor({
   initialDocument,
   syncEnabled,
   syncControls,
+  onDocumentChange,
 }: {
   initialDraft?: ProposalDraft;
   initialDocument?: ProposalDraftDocument;
   syncEnabled: boolean;
   syncControls?: React.ReactNode;
+  onDocumentChange?: (document: ProposalDraftDocument) => void;
 }) {
   const t = useTranslations("proposalEditor.page");
   const schemaT = useTranslations("proposalEditor");
@@ -164,6 +166,10 @@ function ProposalEditor({
     () => ({ actions, activeActionId: actionUuid, tab }),
     [actionUuid, actions, tab]
   );
+  useEffect(() => {
+    onDocumentChange?.(draftDocument);
+  }, [draftDocument, onDocumentChange]);
+
   const currentPayload = useMemo(() => {
     try {
       return serializeProposalDraftDocument(draftDocument);
@@ -581,6 +587,7 @@ export default function NewProposal() {
   const [authPending, setAuthPending] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
   const [continueUnsynced, setContinueUnsynced] = useState(false);
+  const [newDocument, setNewDocument] = useState<ProposalDraftDocument>();
   const attemptedAddressRef = useRef<string | null>(null);
 
   const draftsEnabled = isProposalFeatureEnabled(
@@ -637,12 +644,22 @@ export default function NewProposal() {
   }, [draftQuery.data]);
 
   if (!draftsEnabled || continueUnsynced) {
-    return <ProposalEditor syncEnabled={false} />;
+    return (
+      <ProposalEditor
+        key={`new:${address?.toLowerCase() ?? ""}`}
+        initialDocument={newDocument}
+        onDocumentChange={setNewDocument}
+        syncEnabled={false}
+      />
+    );
   }
 
   if (!draftId) {
     return (
       <ProposalEditor
+        key={`new:${address?.toLowerCase() ?? ""}`}
+        initialDocument={newDocument}
+        onDocumentChange={setNewDocument}
         syncEnabled={authReady}
         syncControls={
           !authReady && (
@@ -758,7 +775,7 @@ export default function NewProposal() {
   }
   return (
     <ProposalEditor
-      key={draftQuery.data.id}
+      key={`${address?.toLowerCase()}:${draftQuery.data.id}`}
       initialDraft={draftQuery.data}
       initialDocument={parsedDraft}
       syncEnabled
