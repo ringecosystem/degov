@@ -1,11 +1,5 @@
 use std::time::{Duration, Instant};
 
-use datalens_sdk::native::{
-    ChainFamilyInput, ChainFamilyKindInput, ChainIdentityInput, DatasetKeyInput,
-    EvmLogsSelectorInput, NetworkIdInput, QueryInput, QueryRangeInput, QueryRangeKindInput,
-    QuerySelectorInput, SelectorKindInput,
-};
-
 use crate::{
     DatalensConfig, DatalensError, DatalensLogQueryCacheSummary, DatalensLogQueryResult,
     DatalensProvisionalFinality, GovernanceTokenStandard,
@@ -33,11 +27,30 @@ pub struct DaoLogAddressSource {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DaoLogRequest {
+    pub chain: String,
+    pub addresses: Vec<String>,
+    pub topic0s: Vec<String>,
+    pub start: u64,
+    pub end: u64,
+    pub finality: String,
+}
+
+impl DaoLogRequest {
+    pub fn selector_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "addresses": self.addresses,
+            "topics": [self.topic0s],
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DaoLogQueryPlan {
     pub sources: Vec<DaoLogAddressSource>,
-    pub from_block: i32,
-    pub to_block: i32,
-    pub input: QueryInput,
+    pub from_block: i64,
+    pub to_block: i64,
+    pub request: DaoLogRequest,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -45,11 +58,16 @@ pub struct DatalensLogPage {
     pub plan: DaoLogQueryPlan,
     pub rows: serde_json::Value,
     pub cache: DatalensLogQueryCacheSummary,
+    pub serve: crate::DatalensServe,
+    pub incomplete: Option<crate::DatalensIncomplete>,
     pub query_duration: Duration,
 }
 
 pub trait DatalensLogQueryReader {
-    fn query_logs(&mut self, input: QueryInput) -> Result<DatalensLogQueryResult, DatalensError>;
+    fn query_logs(
+        &mut self,
+        request: &DaoLogRequest,
+    ) -> Result<DatalensLogQueryResult, DatalensError>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -57,6 +75,7 @@ pub struct DatalensProvisionalLogPage {
     pub plan: DaoLogQueryPlan,
     pub rows: serde_json::Value,
     pub segments: Vec<DatalensProvisionalCacheSegment>,
+    pub rollback_from: Option<u64>,
     pub query_duration: Duration,
 }
 
@@ -76,6 +95,7 @@ pub struct DatalensProvisionalCacheSegment {
 pub struct DatalensProvisionalLogQueryResult {
     pub rows: serde_json::Value,
     pub segments: Vec<DatalensProvisionalCacheSegment>,
+    pub rollback_from: Option<u64>,
 }
 
 impl DatalensProvisionalLogQueryResult {
@@ -83,6 +103,7 @@ impl DatalensProvisionalLogQueryResult {
         Self {
             rows,
             segments: Vec::new(),
+            rollback_from: None,
         }
     }
 }
@@ -90,7 +111,7 @@ impl DatalensProvisionalLogQueryResult {
 pub trait DatalensProvisionalLogQueryReader {
     fn query_provisional_logs(
         &mut self,
-        input: QueryInput,
+        request: &DaoLogRequest,
     ) -> Result<DatalensProvisionalLogQueryResult, DatalensError>;
 }
 
@@ -120,14 +141,21 @@ pub fn plan_dao_log_queries(
             .checked_add(chunk_limit - 1)
             .ok_or_else(|| DatalensError::Query("Datalens log range overflowed".to_owned()))?
             .min(to_block);
-        let range_start = i32::try_from(next_chunk_start).map_err(|_| {
+        let range_start = u64::try_from(next_chunk_start).map_err(|_| {
             DatalensError::Query("Datalens log range start exceeds SDK limit".to_owned())
         })?;
-        let range_end = i32::try_from(chunk_end).map_err(|_| {
+        let range_end = u64::try_from(chunk_end).map_err(|_| {
             DatalensError::Query("Datalens log range end exceeds SDK limit".to_owned())
         })?;
 
-        plans.extend(query_plans(config, addresses, range_start, range_end));
+        plans.extend(query_plans(
+            config,
+            addresses,
+            next_chunk_start,
+            chunk_end,
+            range_start,
+            range_end,
+        ));
 
         if chunk_end == to_block {
             break;
@@ -145,11 +173,13 @@ pub fn fetch_dao_log_pages(
     let mut pages = Vec::new();
     for plan in plans {
         let query_started_at = Instant::now();
-        let result = reader.query_logs(plan.input.clone())?;
+        let result = reader.query_logs(&plan.request)?;
         pages.push(DatalensLogPage {
             plan: plan.clone(),
             rows: result.rows,
             cache: result.cache,
+            serve: result.serve,
+            incomplete: result.incomplete,
             query_duration: query_started_at.elapsed(),
         });
     }
@@ -164,14 +194,15 @@ pub fn fetch_provisional_dao_log_pages(
 ) -> Result<Vec<DatalensProvisionalLogPage>, DatalensError> {
     let mut pages = Vec::new();
     for plan in plans {
-        let mut input = plan.input.clone();
-        input.finality = Some(finality.as_datalens_value().to_owned());
+        let mut request = plan.request.clone();
+        request.finality = finality.as_datalens_value().to_owned();
         let query_started_at = Instant::now();
-        let result = reader.query_provisional_logs(input)?;
+        let result = reader.query_provisional_logs(&request)?;
         pages.push(DatalensProvisionalLogPage {
             plan: plan.clone(),
             rows: result.rows,
             segments: result.segments,
+            rollback_from: result.rollback_from,
             query_duration: query_started_at.elapsed(),
         });
     }
@@ -182,8 +213,10 @@ pub fn fetch_provisional_dao_log_pages(
 fn query_plans(
     config: &DatalensConfig,
     addresses: &DaoContractAddresses,
-    from_block: i32,
-    to_block: i32,
+    from_block: i64,
+    to_block: i64,
+    range_start: u64,
+    range_end: u64,
 ) -> Vec<DaoLogQueryPlan> {
     let mut sources = vec![
         DaoLogAddressSource {
@@ -218,6 +251,8 @@ fn query_plans(
         topics,
         from_block,
         to_block,
+        range_start,
+        range_end,
     )]
 }
 
@@ -226,46 +261,22 @@ fn query_plan(
     sources: Vec<DaoLogAddressSource>,
     selector_addresses: Vec<String>,
     topics: Vec<String>,
-    from_block: i32,
-    to_block: i32,
+    from_block: i64,
+    to_block: i64,
+    range_start: u64,
+    range_end: u64,
 ) -> DaoLogQueryPlan {
     DaoLogQueryPlan {
         sources,
         from_block,
         to_block,
-        input: QueryInput {
-            chain: ChainIdentityInput {
-                family: ChainFamilyInput {
-                    kind: ChainFamilyKindInput::Evm,
-                    other: None,
-                },
-                configured_name: config.chain.configured_name.clone(),
-                network_id: config.chain.network_id.map(|numeric| NetworkIdInput {
-                    numeric: Some(numeric),
-                    textual: None,
-                }),
-            },
-            dataset_key: DatasetKeyInput {
-                family: config.dataset.family.clone(),
-                name: config.dataset.name.clone(),
-            },
-            selector: QuerySelectorInput {
-                kind: SelectorKindInput::EvmLogs,
-                evm_logs: Some(EvmLogsSelectorInput {
-                    addresses: selector_addresses,
-                    topics: vec![topics],
-                }),
-                other: None,
-            },
-            range: QueryRangeInput {
-                kind: QueryRangeKindInput::Block,
-                start: from_block
-                    .try_into()
-                    .expect("query plan start is non-negative"),
-                end: to_block.try_into().expect("query plan end is non-negative"),
-            },
-            finality: Some(config.finality.as_datalens_value().to_owned()),
-            fields: None,
+        request: DaoLogRequest {
+            chain: config.chain.configured_name.clone(),
+            addresses: selector_addresses,
+            topic0s: topics,
+            start: range_start,
+            end: range_end,
+            finality: config.finality.as_datalens_value().to_owned(),
         },
     }
 }

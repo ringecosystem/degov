@@ -150,7 +150,7 @@ impl ProvisionalRuntimeConfig {
             .as_deref()
             .map(str::parse)
             .transpose()?
-            .unwrap_or(DatalensProvisionalFinality::SafeToLatest);
+            .unwrap_or(DatalensProvisionalFinality::LatestOnly);
 
         Ok(Self { enabled, finality })
     }
@@ -340,8 +340,7 @@ impl ContractSetConcurrencyLimit {
 
 pub fn datalens_retry_config(max_attempts: u32) -> RetryConfig {
     RetryConfig {
-        max_attempts,
-        max_elapsed: None,
+        max_attempts: max_attempts.max(1),
         ..RetryConfig::default()
     }
 }

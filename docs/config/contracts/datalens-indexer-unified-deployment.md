@@ -35,8 +35,8 @@ DEGOV_INDEXER_CONFIG_FILE=/app/indexer.yml
 DATALENS_ENDPOINT=<datalens-service-base-url>
 DATALENS_APPLICATION=<degov-staging-or-degov-live>
 DATALENS_TOKEN=<secret-backed-token>
-DATALENS_DATASET_FAMILY=evm
-DATALENS_DATASET_NAME=logs
+DEGOV_REALTIME_DATALENS_APPLICATION=degov-realtime
+DEGOV_REALTIME_DATALENS_TOKEN=<secret-backed-realtime-token>
 ```
 
 The `run` workload additionally needs:

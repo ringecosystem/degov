@@ -43,10 +43,7 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
             ("DATALENS_FINALITY", Some("durable_only")),
             ("DATALENS_CHAIN_NAME", Some("ethereum")),
             ("DATALENS_CHAIN_ID", Some("1")),
-            ("DATALENS_DATASET_FAMILY", Some("evm")),
-            ("DATALENS_DATASET_NAME", Some("logs")),
             ("DATALENS_QUERY_BLOCK_RANGE_LIMIT", Some("500")),
-            ("DATALENS_WARMUP_REQUIRED", Some("true")),
             ("DEGOV_INDEXER_DAO_CODE", Some("lisk-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("568752")),
             (
@@ -78,7 +75,6 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
             assert_eq!(config.chain.network_id, Some(1));
             assert_eq!(config.dataset.key(), "evm.logs");
             assert_eq!(config.query_limits.block_range_limit, 500);
-            assert_eq!(config.warmup.required, true);
             assert_eq!(
                 config.dao_contracts.as_ref().expect("contracts").governor,
                 "0x1111111111111111111111111111111111111111"
@@ -119,11 +115,8 @@ fn test_from_env_with_required_datalens_fields_builds_sdk_service_base_endpoint(
 
             let sdk_config = config.sdk_config();
             assert_eq!(sdk_config.endpoint, "https://datalens.ringdao.com");
-            assert_eq!(
-                sdk_config.bearer_token.as_deref(),
-                Some("unit-test-redacted-value")
-            );
-            assert_eq!(sdk_config.application.as_deref(), Some("degov-live"));
+            assert_eq!(sdk_config.token, "unit-test-redacted-value");
+            assert_eq!(sdk_config.application, "degov-live");
         },
     );
 }
@@ -137,8 +130,6 @@ fn test_from_env_allows_contracts_without_timelock() {
             ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
             ("DATALENS_CHAIN_NAME", Some("ethereum")),
             ("DATALENS_CHAIN_ID", Some("1")),
-            ("DATALENS_DATASET_FAMILY", Some("evm")),
-            ("DATALENS_DATASET_NAME", Some("logs")),
             ("DEGOV_INDEXER_DAO_CODE", Some("no-timelock-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("100")),
             (
@@ -174,8 +165,6 @@ fn test_from_env_rejects_include_pending_finality_for_final_indexing() {
             ("DATALENS_FINALITY", Some("include_pending")),
             ("DATALENS_CHAIN_NAME", Some("ethereum")),
             ("DATALENS_CHAIN_ID", Some("1")),
-            ("DATALENS_DATASET_FAMILY", Some("evm")),
-            ("DATALENS_DATASET_NAME", Some("logs")),
             ("DEGOV_INDEXER_DAO_CODE", Some("lisk-dao")),
             ("DEGOV_INDEXER_START_BLOCK", Some("568752")),
             (
@@ -300,10 +289,6 @@ datalens:
     name: logs
   queryLimits:
     blockRangeLimit: 777
-  warmup:
-    enabled: true
-    ensureOnStartup: true
-    required: true
 chains:
   - chainId: 1
     networkName: ethereum
@@ -343,10 +328,6 @@ chains:
                 config.bearer_token.expose_secret(),
                 "unit-test-redacted-value"
             );
-            assert_eq!(config.warmup.enabled, true);
-            assert_eq!(config.warmup.ensure_on_startup, true);
-            assert_eq!(config.warmup.required, true);
-            assert_eq!(config.warmup.kind.as_str(), "follow_query");
             assert_eq!(config.query_limits.block_range_limit, 777);
             assert_eq!(config.chains.len(), 2);
             assert_eq!(config.chains[0].contracts[0].chain_id, 1);
@@ -355,51 +336,6 @@ chains:
                 config.chains[1].contracts[0].dao_code.as_deref(),
                 Some("lisk-dao")
             );
-        },
-    );
-
-    remove_config_file(path);
-}
-
-#[test]
-fn test_from_env_loads_warmup_disabled_for_local_development() {
-    let path = write_config_file(
-        "yml",
-        r#"
-datalens:
-  endpoint: https://datalens.ringdao.com
-  application: degov-live
-  warmup:
-    enabled: false
-    ensureOnStartup: false
-chains:
-  - chainId: 1
-    networkName: ethereum
-    contracts:
-      - daoCode: ens-dao
-        governor: "0x1111111111111111111111111111111111111111"
-        governorToken: "0x2222222222222222222222222222222222222222"
-        tokenStandard: ERC20
-        timelock: "0x3333333333333333333333333333333333333333"
-        startBlock: 13533418
-"#,
-    );
-
-    with_datalens_env(
-        &[
-            (
-                "DEGOV_INDEXER_CONFIG_FILE",
-                Some(path.to_str().expect("utf8 path")),
-            ),
-            ("DATALENS_TOKEN", Some("unit-test-redacted-value")),
-        ],
-        || {
-            let config = DatalensConfig::from_env().expect("load yaml config");
-
-            assert_eq!(config.warmup.enabled, false);
-            assert_eq!(config.warmup.ensure_on_startup, false);
-            assert_eq!(config.warmup.required, false);
-            assert_eq!(config.warmup.kind.as_str(), "follow_query");
         },
     );
 

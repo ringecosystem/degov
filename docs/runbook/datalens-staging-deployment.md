@@ -53,8 +53,9 @@ The shared indexer, GraphQL service, and worker must receive:
   Set `DEGOV_INDEXER_DAO_CODE` only for a temporary debug filter.
 - `DATALENS_ENDPOINT`: Datalens service base URL, not `/native/graphql`.
 - `DATALENS_TOKEN`: application bearer token from GitOps-managed secrets.
-- `DATALENS_APPLICATION`: `degov-staging` for staging validation.
-- `DATALENS_DATASET_FAMILY` and `DATALENS_DATASET_NAME`.
+- `DATALENS_APPLICATION`: `degov-staging` for staging validation. Production uses `degov-live`.
+- Log queries are always `evm.logs`. `DATALENS_QUERY_BLOCK_RANGE_LIMIT` is the follow chunk size.
+- Realtime reads use `DEGOV_REALTIME_DATALENS_APPLICATION=degov-realtime` and `DEGOV_REALTIME_DATALENS_TOKEN`. Provisional finality is `latest_only`.
 - `DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS`: local socket address for the service,
   for example `0.0.0.0:4350`.
 - `DEGOV_INDEXER_GRAPHQL_ENDPOINT`: public GraphQL URL used by the service to
@@ -76,7 +77,7 @@ point at the staging GraphQL service.
 
 Confirm these Datalens server dependencies before rollout:
 
-- endpoint responds to the native GraphQL readiness smoke check;
+- endpoint responds to `GET /v1/heads/{chain}` for each configured chain;
 - chain config includes the selected chain id/name and EVM log dataset;
 - S3/cache backing the queried dataset is healthy for the selected range;
 - application auth accepts the `degov-staging` token;

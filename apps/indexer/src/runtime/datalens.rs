@@ -24,7 +24,7 @@ fn verify_datalens_blocking(config: &DatalensConfig) -> Result<()> {
     );
     let client = DatalensNativeClient::from_config(config).context("create Datalens client")?;
     verify_datalens_service(&client).context("verify Datalens service")?;
-    log::info!("Datalens native GraphQL readiness confirmed");
+    log::info!("Datalens heads readiness confirmed");
 
     Ok(())
 }

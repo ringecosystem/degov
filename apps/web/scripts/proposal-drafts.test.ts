@@ -205,7 +205,10 @@ test("new proposal entry and editor share an inline draft picker", () => {
   assert.doesNotMatch(dashboard, /href="\/proposals\/drafts"/);
   assert.doesNotMatch(proposals, /href="\/proposals\/drafts"/);
   assert.match(editor, /ProposalDraftPicker/);
-  assert.match(editor, /key=\{draftId\}/);
+  assert.match(
+    editor,
+    /key=\{`\$\{address\?\.toLowerCase\(\)\}:\$\{draftQuery\.data\.id\}`\}/
+  );
   assert.match(editor, /switchDraftConfirm/);
-  assert.match(editor, /return <ProposalEditor key="new" syncEnabled \/>;/);
+  assert.match(editor, /onDocumentChange=\{setNewDocument\}/);
 });

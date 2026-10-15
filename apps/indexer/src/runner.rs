@@ -8,8 +8,8 @@ use thiserror::Error;
 use crate::{
     ChainReadExecutionReport, ChainReadPlan, ChainReadPlanBuilder, ChainTool, CheckpointBlockRange,
     CheckpointError, DaoContractAddresses, DaoEventDecodeError, DaoLogSource, DatalensConfig,
-    DatalensError, DatalensLogPage, DatalensLogQueryReader, DatalensQueryErrorClass,
-    DatalensWarmupEffectivenessAggregation, DatalensWarmupEffectivenessLogFields, DecodedDaoEvent,
+    DatalensError, DatalensLogPage, DatalensLogQueryReader, DatalensQueryEffectivenessAggregation,
+    DatalensQueryEffectivenessLogFields, DatalensQueryErrorClass, DecodedDaoEvent,
     GovernanceTokenStandard, InMemoryProposalProjectionRepository,
     InMemoryTimelockProjectionRepository, InMemoryTokenProjectionRepository,
     InMemoryVoteProjectionRepository, IndexerCheckpoint, IndexerCheckpointIdentity,
@@ -83,6 +83,7 @@ pub struct IndexerRunnerProgress {
 pub struct IndexerRunnerReport {
     pub chunks_processed: u64,
     pub shutdown_requested: bool,
+    pub follow_wait: bool,
     pub last_progress: IndexerRunnerProgress,
 }
 
@@ -142,7 +143,7 @@ pub struct AdaptiveChunkFeedback {
     pub returned_row_count: usize,
     pub local_processing_write_duration: Duration,
     pub read_duration: Duration,
-    pub warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
+    pub query_effectiveness: DatalensQueryEffectivenessAggregation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -285,7 +286,7 @@ impl AdaptiveChunkSizer {
         let high_query_duration = feedback.read_duration
             > self.config.high_query_duration_threshold
             || feedback
-                .warmup_effectiveness
+                .query_effectiveness
                 .query_duration_max()
                 .is_some_and(|duration| duration > self.config.high_query_duration_threshold);
         let cache_fill = feedback.has_cache_fill();
@@ -427,12 +428,12 @@ impl AdaptiveChunkFeedback {
     }
 
     fn has_full_cache_hit(&self) -> bool {
-        self.warmup_effectiveness.full_hit_count > 0 && !self.has_cache_fill()
+        self.query_effectiveness.full_hit_count > 0 && !self.has_cache_fill()
     }
 
     fn has_only_full_cache_hits(&self) -> bool {
-        self.warmup_effectiveness.query_count > 0
-            && self.warmup_effectiveness.full_hit_count == self.warmup_effectiveness.query_count
+        self.query_effectiveness.query_count > 0
+            && self.query_effectiveness.full_hit_count == self.query_effectiveness.query_count
             && !self.has_cache_fill()
     }
 
@@ -440,15 +441,15 @@ impl AdaptiveChunkFeedback {
         self.read_duration <= config.fast_chunk_duration_threshold
             && self.local_processing_write_duration <= config.fast_chunk_duration_threshold
             && self
-                .warmup_effectiveness
+                .query_effectiveness
                 .query_duration_max()
                 .is_none_or(|duration| duration <= config.fast_chunk_duration_threshold)
     }
 
     fn has_cache_fill(&self) -> bool {
-        self.warmup_effectiveness.partial_hit_count > 0
-            || self.warmup_effectiveness.miss_count > 0
-            || self.warmup_effectiveness.provider_fill_range_count > 0
+        self.query_effectiveness.partial_hit_count > 0
+            || self.query_effectiveness.miss_count > 0
+            || self.query_effectiveness.provider_fill_range_count > 0
     }
 
     fn is_slow_cache_fill(&self, config: &AdaptiveChunkSizerConfig) -> bool {
@@ -457,9 +458,36 @@ impl AdaptiveChunkFeedback {
             .max(config.high_query_duration_threshold);
         self.read_duration > threshold
             || self
-                .warmup_effectiveness
+                .query_effectiveness
                 .query_duration_max()
                 .is_some_and(|duration| duration > threshold)
+    }
+}
+
+fn served_commit(
+    pages: &[crate::DatalensLogPage],
+    range: CheckpointBlockRange,
+) -> (Option<i64>, Option<crate::DatalensIncomplete>) {
+    let mut commit_to = range.to_block;
+    let mut incomplete = None;
+    let mut served = false;
+    for page in pages {
+        incomplete = incomplete.or(page.incomplete);
+        match page.serve {
+            crate::DatalensServe::ThroughRequest => served = true,
+            crate::DatalensServe::ThroughBlock(end) => {
+                served = true;
+                if let Ok(end) = i64::try_from(end) {
+                    commit_to = commit_to.min(end);
+                }
+            }
+            crate::DatalensServe::Nothing => {}
+        }
+    }
+    if !served || commit_to < range.from_block {
+        (None, incomplete)
+    } else {
+        (Some(commit_to), incomplete)
     }
 }
 
@@ -670,6 +698,8 @@ pub trait IndexerOnchainRefreshTick: Send {
 struct ChunkProcessingResult {
     batch: IndexerProjectionBatch,
     metrics: ChunkProcessingMetrics,
+    commit_to: Option<i64>,
+    incomplete: Option<crate::DatalensIncomplete>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -689,7 +719,7 @@ struct ChunkProcessingMetrics {
     returned_row_count: usize,
     decoded_count: usize,
     projection_event_counts: ProjectionEventCounts,
-    warmup_effectiveness: DatalensWarmupEffectivenessAggregation,
+    query_effectiveness: DatalensQueryEffectivenessAggregation,
     selector_fingerprint: String,
     read_duration: Duration,
     decode_duration: Duration,
@@ -820,6 +850,7 @@ where
                 return Ok(IndexerRunnerReport {
                     chunks_processed,
                     shutdown_requested: true,
+                    follow_wait: false,
                     last_progress: progress(
                         checkpoint.processed_height,
                         effective_target,
@@ -834,6 +865,7 @@ where
                 return Ok(IndexerRunnerReport {
                     chunks_processed,
                     shutdown_requested: false,
+                    follow_wait: false,
                     last_progress: progress(
                         checkpoint.processed_height,
                         effective_target,
@@ -940,6 +972,29 @@ where
                     return Err(error);
                 }
             };
+            let Some(commit_to) = processing.commit_to else {
+                if processing
+                    .incomplete
+                    .is_some_and(crate::DatalensIncomplete::backs_off)
+                {
+                    return Err(IndexerRunnerError::Datalens(crate::DatalensError::Query(
+                        "datalens follow stalled before serving blocks: provider_error or budget_exhausted"
+                            .to_owned(),
+                    )));
+                }
+                return Ok(IndexerRunnerReport {
+                    chunks_processed,
+                    shutdown_requested: false,
+                    follow_wait: true,
+                    last_progress: progress(
+                        checkpoint.processed_height,
+                        effective_target,
+                        self.options.start_block,
+                        progress_rate.blocks_per_second(),
+                        self.options.progress_refresh_lag_blocks,
+                    ),
+                });
+            };
             let checkpoint_identity = self.options.checkpoint_identity.clone();
             let checkpoint_next_block_before = checkpoint.next_block;
             let write_started_at = Instant::now();
@@ -967,7 +1022,7 @@ where
             }
             if let Err(error) = transaction.advance_checkpoint(
                 &self.options.checkpoint_identity,
-                range.to_block,
+                commit_to,
                 Some(effective_target),
             ) {
                 crate::metrics::record_indexer_chunk_attempt(
@@ -988,7 +1043,7 @@ where
                 returned_row_count: processing.metrics.returned_row_count,
                 local_processing_write_duration,
                 read_duration: processing.metrics.read_duration,
-                warmup_effectiveness: processing.metrics.warmup_effectiveness.clone(),
+                query_effectiveness: processing.metrics.query_effectiveness.clone(),
             });
             if let Err(error) = transaction
                 .update_adaptive_chunk_state(&self.options.checkpoint_identity, &sizing_decision)
@@ -1014,13 +1069,13 @@ where
             let write_duration = write_started_at.elapsed();
             let (deferred_drain_count, deferred_drain_duration) =
                 self.drain_deferred_onchain_refresh_tasks(range);
-            self.run_proposal_timestamp_backfill(range.to_block);
-            self.run_onchain_refresh_tick(range.to_block);
+            self.run_proposal_timestamp_backfill(commit_to);
+            self.run_onchain_refresh_tick(commit_to);
 
             chunks_processed += 1;
-            progress_rate.record(range.to_block, Instant::now());
+            progress_rate.record(commit_to, Instant::now());
             let chunk_progress = progress(
-                Some(range.to_block),
+                Some(commit_to),
                 effective_target,
                 self.options.start_block,
                 progress_rate.blocks_per_second(),
@@ -1032,15 +1087,15 @@ where
                 &chunk_progress,
                 crate::metrics::IndexerChunkMetricsObservation {
                     datalens_request_count: processing.metrics.datalens_request_count,
-                    cache_full_hit_count: processing.metrics.warmup_effectiveness.full_hit_count,
+                    cache_full_hit_count: processing.metrics.query_effectiveness.full_hit_count,
                     cache_partial_hit_count: processing
                         .metrics
-                        .warmup_effectiveness
+                        .query_effectiveness
                         .partial_hit_count,
-                    cache_miss_count: processing.metrics.warmup_effectiveness.miss_count,
+                    cache_miss_count: processing.metrics.query_effectiveness.miss_count,
                     cache_provider_fill_count: processing
                         .metrics
-                        .warmup_effectiveness
+                        .query_effectiveness
                         .provider_fill_range_count,
                     chunk_duration_seconds: total_duration.as_secs_f64(),
                     last_chunk_size: sizing_decision.previous_chunk_size,
@@ -1074,8 +1129,8 @@ where
                 local_processing_write_duration.as_millis(),
                 total_duration.as_millis(),
                 checkpoint_next_block_before,
-                range.to_block,
-                range.to_block + 1,
+                commit_to,
+                commit_to + 1,
                 chunk_progress.synced_percentage,
                 chunk_progress.configured_range_synced_percentage,
                 chunk_progress.remaining_blocks,
@@ -1084,17 +1139,17 @@ where
                 sizing_decision.previous_chunk_size,
                 sizing_decision.current_chunk_size,
                 sizing_decision.reason,
-                processing.metrics.warmup_effectiveness.full_hit_count,
-                processing.metrics.warmup_effectiveness.partial_hit_count,
-                processing.metrics.warmup_effectiveness.miss_count,
+                processing.metrics.query_effectiveness.full_hit_count,
+                processing.metrics.query_effectiveness.partial_hit_count,
+                processing.metrics.query_effectiveness.miss_count,
                 processing
                     .metrics
-                    .warmup_effectiveness
+                    .query_effectiveness
                     .provider_fill_range_count,
                 optional_u128_log_value(
                     processing
                         .metrics
-                        .warmup_effectiveness
+                        .query_effectiveness
                         .query_duration_max_ms()
                 ),
                 self.options.onchain_refresh_deferred_drain_enabled,
@@ -1102,37 +1157,57 @@ where
                 deferred_drain_count,
                 deferred_drain_duration.as_millis()
             );
-            let mut warmup_effectiveness_aggregation =
-                processing.metrics.warmup_effectiveness.clone();
-            warmup_effectiveness_aggregation
+            let mut query_effectiveness_aggregation =
+                processing.metrics.query_effectiveness.clone();
+            query_effectiveness_aggregation
                 .record_provider_limits(provider_limit_count_since_summary);
             provider_limit_count_since_summary = 0;
-            let warmup_effectiveness = DatalensWarmupEffectivenessLogFields::from_aggregation(
+            let query_effectiveness = DatalensQueryEffectivenessLogFields::from_aggregation(
                 &self.options.checkpoint_identity,
                 processing.metrics.selector_fingerprint.clone(),
                 Some(checkpoint_next_block_before),
                 Some(range.to_block),
-                &warmup_effectiveness_aggregation,
+                &query_effectiveness_aggregation,
             );
             info!(
-                "Datalens follow_query warmup effectiveness summary dao_code={} chain_id={} contract_set_id={} selector_fingerprint={} query_watermark={} current_checkpoint={} full_hit_count={} partial_hit_count={} miss_count={} empty_count={} unavailable_count={} provider_fill_range_count={} provider_limit_count={} query_duration_min_ms={} query_duration_avg_ms={} query_duration_max_ms={}",
-                warmup_effectiveness.dao_code,
-                warmup_effectiveness.chain_id,
-                warmup_effectiveness.contract_set_id,
-                warmup_effectiveness.selector_fingerprint,
-                optional_i64_log_value(warmup_effectiveness.query_watermark),
-                optional_i64_log_value(warmup_effectiveness.current_checkpoint),
-                warmup_effectiveness.full_hit_count,
-                warmup_effectiveness.partial_hit_count,
-                warmup_effectiveness.miss_count,
-                warmup_effectiveness.empty_count,
-                warmup_effectiveness.unavailable_count,
-                warmup_effectiveness.provider_fill_range_count,
-                warmup_effectiveness.provider_limit_count,
-                optional_u128_log_value(warmup_effectiveness.query_duration_min_ms),
-                optional_u128_log_value(warmup_effectiveness.query_duration_avg_ms),
-                optional_u128_log_value(warmup_effectiveness.query_duration_max_ms)
+                "Datalens query effectiveness summary dao_code={} chain_id={} contract_set_id={} selector_fingerprint={} query_watermark={} current_checkpoint={} full_hit_count={} partial_hit_count={} miss_count={} empty_count={} unavailable_count={} provider_fill_range_count={} provider_limit_count={} query_duration_min_ms={} query_duration_avg_ms={} query_duration_max_ms={}",
+                query_effectiveness.dao_code,
+                query_effectiveness.chain_id,
+                query_effectiveness.contract_set_id,
+                query_effectiveness.selector_fingerprint,
+                optional_i64_log_value(query_effectiveness.query_watermark),
+                optional_i64_log_value(query_effectiveness.current_checkpoint),
+                query_effectiveness.full_hit_count,
+                query_effectiveness.partial_hit_count,
+                query_effectiveness.miss_count,
+                query_effectiveness.empty_count,
+                query_effectiveness.unavailable_count,
+                query_effectiveness.provider_fill_range_count,
+                query_effectiveness.provider_limit_count,
+                optional_u128_log_value(query_effectiveness.query_duration_min_ms),
+                optional_u128_log_value(query_effectiveness.query_duration_avg_ms),
+                optional_u128_log_value(query_effectiveness.query_duration_max_ms)
             );
+            if processing
+                .incomplete
+                .is_some_and(crate::DatalensIncomplete::backs_off)
+            {
+                return Err(IndexerRunnerError::Datalens(crate::DatalensError::Query(
+                    "datalens follow stalled after a partial serve: provider_error or budget_exhausted"
+                        .to_owned(),
+                )));
+            }
+            if processing
+                .incomplete
+                .is_some_and(crate::DatalensIncomplete::waits)
+            {
+                return Ok(IndexerRunnerReport {
+                    chunks_processed,
+                    shutdown_requested: false,
+                    follow_wait: true,
+                    last_progress: chunk_progress,
+                });
+            }
             checkpoint = self
                 .store
                 .read_or_create_checkpoint(
@@ -1375,21 +1450,45 @@ where
         let datalens_request_count = plans.len();
         let selector_fingerprint = plans
             .first()
-            .map(|plan| datalens_selector_fingerprint(&plan.input.selector))
+            .map(|plan| datalens_selector_fingerprint(&plan.request))
             .unwrap_or_else(|| "unavailable".to_owned());
         let pages = fetch_dao_log_pages(&mut self.reader, &plans)?;
         let read_duration = read_started_at.elapsed();
-        let mut warmup_effectiveness = DatalensWarmupEffectivenessAggregation::new();
+        let (commit_to, incomplete) = served_commit(&pages, range);
+        let mut query_effectiveness = DatalensQueryEffectivenessAggregation::new();
         for page in &pages {
-            warmup_effectiveness.record_query(page.cache.clone(), page.query_duration);
+            query_effectiveness.record_query(page.cache.clone(), page.query_duration);
         }
+        let Some(commit_to) = commit_to else {
+            return Ok(ChunkProcessingResult {
+                batch: IndexerProjectionBatch {
+                    proposal: None,
+                    vote: None,
+                    token: None,
+                    timelock: None,
+                },
+                metrics: ChunkProcessingMetrics {
+                    datalens_request_count,
+                    selector_fingerprint,
+                    query_effectiveness,
+                    read_duration,
+                    ..ChunkProcessingMetrics::default()
+                },
+                commit_to: None,
+                incomplete,
+            });
+        };
+        let served_range = CheckpointBlockRange {
+            from_block: range.from_block,
+            to_block: commit_to,
+        };
         let decode_started_at = Instant::now();
         let decoded = self.decode_pages(pages)?;
         let decode_duration = decode_started_at.elapsed();
         let decoded_count = decoded.events.len();
         let returned_row_count = decoded.returned_row_count;
         let project_started_at = Instant::now();
-        let projected = self.project_events(decoded.events, range, target_height)?;
+        let projected = self.project_events(decoded.events, served_range, target_height)?;
         let project_duration = project_started_at.elapsed();
 
         Ok(ChunkProcessingResult {
@@ -1399,12 +1498,14 @@ where
                 returned_row_count,
                 decoded_count,
                 projection_event_counts: projected.event_counts,
-                warmup_effectiveness,
+                query_effectiveness,
                 selector_fingerprint,
                 read_duration,
                 decode_duration,
                 project_duration,
             },
+            commit_to: Some(commit_to),
+            incomplete,
         })
     }
 

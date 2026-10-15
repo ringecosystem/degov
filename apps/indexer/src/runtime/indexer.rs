@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, future::Future, sync::Arc, time::Duration};
 
 use anyhow as runtime_anyhow;
-use datalens_sdk::RetryConfig;
 use runtime_anyhow::{Context, Result, bail};
 use sqlx::postgres::PgPoolOptions;
 #[cfg(test)]
@@ -13,9 +12,9 @@ use crate::{
     ChainTool, DaoContractAddresses, DaoEventDecoder, DatalensConfig, DatalensDurableHeadReader,
     DatalensError, DatalensNativeClient, DatalensProvisionalLogQueryReader,
     DatalensQueryConcurrencyGate, DatalensQueryErrorClass, DatalensRuntimeContractSet,
-    DatalensWarmupEnsureOutcome, EvmRpcChainTool, IndexerContractSetMode,
-    IndexerContractSetRuntimeConfig, IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport,
-    IndexerRunnerStore, IndexerRuntimeConfig, IndexerTargetHeight, MetricsRuntimeConfig,
+    EvmRpcChainTool, IndexerContractSetMode, IndexerContractSetRuntimeConfig,
+    IndexerOnchainRefreshTick, IndexerRunner, IndexerRunnerReport, IndexerRunnerStore,
+    IndexerRuntimeConfig, IndexerTargetHeight, MetricsRuntimeConfig,
     MultiChainToolOnchainRefreshReader, OnchainRefreshRuntimeConfig, OnchainRefreshTaskScope,
     OnchainRefreshTickReport, OnchainRefreshTickRunner, OnchainRefreshTickScheduler,
     OnchainRefreshWorker, OnchainRefreshWorkerError, PostgresIndexerRunnerStore,
@@ -24,7 +23,7 @@ use crate::{
     ProvisionalWorkerOptions,
     checkpoint::configured_range_progress,
     classify_datalens_query_error, datalens_query_error_is_current_head_race,
-    datalens_retry_config, ensure_datalens_warmup_task,
+    datalens_retry_config,
     metrics::IndexerLatestHeadRecord,
     onchain_refresh_debounce_from_env,
     provisional::{DatalensProvisionalSegmentStore, ProvisionalWorkerError},
@@ -71,7 +70,6 @@ pub async fn run_indexer() -> Result<()> {
             .await
             .context("start DeGov indexer metrics service")
         },
-        || ensure_warmup_on_startup(&runtime, &config),
         || apply_runtime_maintenance(&pool),
     )
     .await?;
@@ -124,26 +122,20 @@ async fn run_post_schema_startup<
     MetricsServer,
     StartMetrics,
     StartMetricsFuture,
-    EnsureWarmup,
-    EnsureWarmupFuture,
     ApplyRuntimeMaintenance,
     ApplyRuntimeMaintenanceFuture,
 >(
     start_realtime: impl FnOnce() -> Result<()>,
     start_metrics: StartMetrics,
-    ensure_warmup: EnsureWarmup,
     apply_runtime_maintenance: ApplyRuntimeMaintenance,
 ) -> Result<MetricsServer>
 where
     StartMetrics: FnOnce() -> StartMetricsFuture,
     StartMetricsFuture: Future<Output = Result<MetricsServer>>,
-    EnsureWarmup: FnOnce() -> EnsureWarmupFuture,
-    EnsureWarmupFuture: Future<Output = Result<()>>,
     ApplyRuntimeMaintenance: FnOnce() -> ApplyRuntimeMaintenanceFuture,
     ApplyRuntimeMaintenanceFuture: Future<Output = Result<()>>,
 {
     start_realtime()?;
-    ensure_warmup().await?;
     apply_runtime_maintenance().await?;
     let metrics_server = start_metrics().await?;
 
@@ -1097,6 +1089,7 @@ impl ContractSetPassOutcome {
             report: IndexerRunnerReport {
                 chunks_processed: 0,
                 shutdown_requested: false,
+                follow_wait: false,
                 last_progress: IndexerRunnerProgress {
                     processed_height: None,
                     target_height,
@@ -1128,6 +1121,9 @@ fn recovering_contract_set_poll_interval(
     report: &IndexerRunnerReport,
     default_interval: Duration,
 ) -> Duration {
+    if report.follow_wait {
+        return default_interval;
+    }
     let remaining_blocks = report.last_progress.remaining_blocks;
     if remaining_blocks == 0 {
         default_interval * CAUGHT_UP_POLL_INTERVAL_MULTIPLIER
@@ -1436,187 +1432,6 @@ async fn acquire_semaphore(
             .context("acquire Datalens contract set concurrency permit"),
         None => Ok(None),
     }
-}
-
-async fn ensure_warmup_on_startup(
-    runtime: &IndexerRuntimeConfig,
-    config: &DatalensConfig,
-) -> Result<()> {
-    if !config.warmup.enabled || !config.warmup.ensure_on_startup {
-        log::info!(
-            "Datalens follow_query warmup startup ensure disabled enabled={} ensure_on_startup={}",
-            config.warmup.enabled,
-            config.warmup.ensure_on_startup
-        );
-        return Ok(());
-    }
-
-    let contract_sets = runtime
-        .configured_contract_sets(config)
-        .context("select Datalens warmup contract sets")?;
-    let retry_config = datalens_retry_config(runtime.query_max_attempts);
-    let concurrency = warmup_startup_global_concurrency(runtime, contract_sets.len());
-    let per_chain_max_in_flight = runtime.datalens_query_concurrency.per_chain_max_in_flight;
-    let wait_for_completion = contract_sets
-        .iter()
-        .any(|contract_set| contract_set.config.warmup.required);
-
-    log::info!(
-        "Datalens follow_query warmup startup ensure scheduling contract_set_count={} concurrency={} per_chain_concurrency={} wait_for_completion={}",
-        contract_sets.len(),
-        concurrency,
-        per_chain_max_in_flight.map_or_else(|| "unlimited".to_owned(), |limit| limit.to_string()),
-        wait_for_completion
-    );
-
-    if wait_for_completion {
-        run_warmup_startup_ensure(
-            contract_sets,
-            retry_config,
-            concurrency,
-            per_chain_max_in_flight,
-        )
-        .await
-    } else {
-        task::spawn(async move {
-            if let Err(error) = run_warmup_startup_ensure(
-                contract_sets,
-                retry_config,
-                concurrency,
-                per_chain_max_in_flight,
-            )
-            .await
-            {
-                log::warn!(
-                    "Datalens follow_query warmup startup background ensure failed error={:#}",
-                    error
-                );
-            }
-        });
-        Ok(())
-    }
-}
-
-async fn run_warmup_startup_ensure(
-    contract_sets: Vec<DatalensRuntimeContractSet>,
-    retry_config: RetryConfig,
-    concurrency: usize,
-    per_chain_max_in_flight: Option<usize>,
-) -> Result<()> {
-    let global_semaphore = Arc::new(Semaphore::new(concurrency));
-    let per_chain_semaphores =
-        warmup_startup_per_chain_semaphores(per_chain_max_in_flight, &contract_sets);
-    let mut handles = task::JoinSet::new();
-
-    for contract_set in contract_sets {
-        let config = contract_set.config.clone();
-        let addresses = contract_set.addresses.clone();
-        let dao_code = contract_set.dao_code.clone();
-        let contract_set_id = contract_set.contract_set_id.clone();
-        let chain_id = contract_set.contract.chain_id;
-        let start_block = contract_set.contract.start_block;
-        let warmup_required = config.warmup.required;
-        let retry_config = retry_config.clone();
-        let per_chain_permit = acquire_semaphore(
-            per_chain_semaphores
-                .as_ref()
-                .and_then(|semaphores| semaphores.get(&chain_id).cloned()),
-        )
-        .await
-        .context("acquire Datalens warmup startup per-chain concurrency permit")?;
-        let global_permit = global_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .context("acquire Datalens warmup startup concurrency permit")?;
-
-        handles.spawn_blocking(move || -> Result<_> {
-            let _global_permit = global_permit;
-            let _per_chain_permit = per_chain_permit;
-            let mut client =
-                DatalensNativeClient::from_config_with_retry_config(&config, retry_config)
-                    .context("create Datalens client")?;
-            let outcome =
-                ensure_datalens_warmup_task(&mut client, &config, &addresses, start_block)
-                    .context("ensure Datalens follow_query warmup task")?;
-
-            Ok(WarmupStartupEnsureResult {
-                dao_code,
-                chain_id,
-                contract_set_id,
-                warmup_required,
-                outcome,
-            })
-        });
-    }
-
-    while let Some(result) = handles.join_next().await {
-        let result = result.context("join Datalens warmup ensure task")??;
-
-        match result.outcome {
-            DatalensWarmupEnsureOutcome::Disabled => {}
-            DatalensWarmupEnsureOutcome::Failed { error } => {
-                log::warn!(
-                    "Datalens follow_query warmup startup ensure failed; continuing indexing dao_code={} chain_id={} contract_set_id={} required={} error={}",
-                    result.dao_code,
-                    result.chain_id,
-                    result.contract_set_id,
-                    result.warmup_required,
-                    error
-                );
-            }
-            DatalensWarmupEnsureOutcome::Submitted { task_id, created } => {
-                log::info!(
-                    "Datalens follow_query warmup task ensured dao_code={} chain_id={} contract_set_id={} task_id={} created={}",
-                    result.dao_code,
-                    result.chain_id,
-                    result.contract_set_id,
-                    task_id,
-                    created
-                );
-            }
-        }
-    }
-
-    Ok(())
-}
-
-struct WarmupStartupEnsureResult {
-    dao_code: String,
-    chain_id: i32,
-    contract_set_id: String,
-    warmup_required: bool,
-    outcome: DatalensWarmupEnsureOutcome,
-}
-
-fn warmup_startup_global_concurrency(
-    runtime: &IndexerRuntimeConfig,
-    contract_set_count: usize,
-) -> usize {
-    if contract_set_count == 0 {
-        return 1;
-    }
-
-    runtime
-        .datalens_query_concurrency
-        .global_max_in_flight
-        .unwrap_or(4)
-        .min(contract_set_count)
-        .max(1)
-}
-
-fn warmup_startup_per_chain_semaphores(
-    per_chain_max_in_flight: Option<usize>,
-    contract_sets: &[DatalensRuntimeContractSet],
-) -> Option<BTreeMap<i32, Arc<Semaphore>>> {
-    let limit = per_chain_max_in_flight?;
-    let mut semaphores = BTreeMap::new();
-    for contract_set in contract_sets {
-        semaphores
-            .entry(contract_set.contract.chain_id)
-            .or_insert_with(|| Arc::new(Semaphore::new(limit)));
-    }
-    Some(semaphores)
 }
 
 async fn run_contract_set_pass(
@@ -2219,8 +2034,6 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use datalens_sdk::native::QueryInput;
-
     use crate::{
         ChainFamily, ChainIdentityConfig, DatalensFinality, DatalensProvisionalCacheSegment,
         DatalensProvisionalFinality, DatalensProvisionalLogQueryResult,
@@ -2284,7 +2097,6 @@ mod tests {
                         .expect("metrics startup signal is received");
                     Ok(())
                 },
-                || async { Ok(()) },
                 || async move {
                     maintenance_started_tx
                         .send(())
@@ -2947,7 +2759,7 @@ mod tests {
             proposal_timestamp_backfill: Default::default(),
             provisional: ProvisionalRuntimeConfig {
                 enabled: false,
-                finality: DatalensProvisionalFinality::SafeToLatest,
+                finality: DatalensProvisionalFinality::LatestOnly,
             },
             realtime: Default::default(),
         };
@@ -2969,7 +2781,6 @@ mod tests {
             query_limits: QueryLimitConfig {
                 block_range_limit: 1_000,
             },
-            warmup: Default::default(),
             dao_contracts: None,
             chains: Vec::new(),
         };
@@ -2985,7 +2796,7 @@ mod tests {
     fn test_provisional_worker_runtime_disabled_skips_reader_and_store() {
         let runtime = contract_runtime(ProvisionalRuntimeConfig {
             enabled: false,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         });
         let config = datalens_config();
         let contracts = dao_contracts();
@@ -3013,14 +2824,14 @@ mod tests {
     fn test_provisional_worker_runtime_enabled_runs_safe_to_latest_path() {
         let runtime = contract_runtime(ProvisionalRuntimeConfig {
             enabled: true,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         });
         let config = datalens_config();
         let contracts = dao_contracts();
         let mut reader =
             RecordingProvisionalReader::with_segments(vec![DatalensProvisionalCacheSegment {
                 source: "provider".to_owned(),
-                finality: "safe_to_latest".to_owned(),
+                finality: "latest_only".to_owned(),
                 range_start_block: 21,
                 range_end_block: 25,
                 anchor_block_number: Some(25),
@@ -3050,10 +2861,10 @@ mod tests {
             reader
                 .finalities
                 .iter()
-                .all(|finality| finality.as_deref() == Some("safe_to_latest"))
+                .all(|finality| finality.as_deref() == Some("latest_only"))
         );
         assert_eq!(store.writes.len(), 1);
-        assert_eq!(store.writes[0].segment_finality, "safe_to_latest");
+        assert_eq!(store.writes[0].segment_finality, "latest_only");
         assert_eq!(store.writes[0].range_start_block, 21);
         assert_eq!(store.writes[0].range_end_block, 25);
     }
@@ -3062,14 +2873,14 @@ mod tests {
     fn test_provisional_worker_range_path_reuses_safe_to_latest_projection() {
         let runtime = contract_runtime(ProvisionalRuntimeConfig {
             enabled: true,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         });
         let config = datalens_config();
         let contracts = dao_contracts();
         let mut reader =
             RecordingProvisionalReader::with_segments(vec![DatalensProvisionalCacheSegment {
                 source: "provider".to_owned(),
-                finality: "safe_to_latest".to_owned(),
+                finality: "latest_only".to_owned(),
                 range_start_block: 17,
                 range_end_block: 19,
                 anchor_block_number: Some(19),
@@ -3094,7 +2905,7 @@ mod tests {
         assert_eq!(result.segments_written, Some(1));
         assert_eq!(reader.latest_head_calls, 0);
         assert_eq!(reader.ranges, vec![(17, 19)]);
-        assert_eq!(reader.finalities, vec![Some("safe_to_latest".to_owned())]);
+        assert_eq!(reader.finalities, vec![Some("latest_only".to_owned())]);
         assert_eq!(store.writes.len(), 1);
     }
 
@@ -3102,7 +2913,7 @@ mod tests {
     fn test_provisional_worker_runtime_skips_until_durable_pass_catches_up() {
         let runtime = contract_runtime(ProvisionalRuntimeConfig {
             enabled: true,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         });
         let config = datalens_config();
         let contracts = dao_contracts();
@@ -3131,7 +2942,7 @@ mod tests {
     fn test_provisional_worker_runtime_ignores_current_head_race() {
         let runtime = contract_runtime(ProvisionalRuntimeConfig {
             enabled: true,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         });
         let config = datalens_config();
         let contracts = dao_contracts();
@@ -3155,7 +2966,7 @@ mod tests {
         assert_eq!(result.latest_height, Some(25));
         assert_eq!(reader.latest_head_calls, 1);
         assert_eq!(reader.ranges, vec![(21, 25)]);
-        assert_eq!(reader.finalities, vec![Some("safe_to_latest".to_owned())]);
+        assert_eq!(reader.finalities, vec![Some("latest_only".to_owned())]);
         assert!(store.writes.is_empty());
     }
 
@@ -3163,7 +2974,7 @@ mod tests {
     fn test_provisional_worker_runtime_keeps_other_datalens_query_errors() {
         let runtime = contract_runtime(ProvisionalRuntimeConfig {
             enabled: true,
-            finality: DatalensProvisionalFinality::SafeToLatest,
+            finality: DatalensProvisionalFinality::LatestOnly,
         });
         let config = datalens_config();
         let contracts = dao_contracts();
@@ -3230,7 +3041,7 @@ mod tests {
             proposal_timestamp_backfill: Default::default(),
             provisional: ProvisionalRuntimeConfig {
                 enabled: false,
-                finality: DatalensProvisionalFinality::SafeToLatest,
+                finality: DatalensProvisionalFinality::LatestOnly,
             },
         }
     }
@@ -3263,6 +3074,7 @@ mod tests {
         IndexerRunnerReport {
             chunks_processed: 1,
             shutdown_requested: false,
+            follow_wait: false,
             last_progress: IndexerRunnerProgress {
                 processed_height: Some(100),
                 target_height: 100 + remaining_blocks,
@@ -3300,7 +3112,6 @@ mod tests {
             query_limits: QueryLimitConfig {
                 block_range_limit: 1_000,
             },
-            warmup: Default::default(),
             dao_contracts: None,
             chains: Vec::new(),
         }
@@ -3317,7 +3128,7 @@ mod tests {
 
     #[test]
     fn test_all_mode_contract_set_runtime_preserves_enqueue_only_onchain_refresh() {
-        let runtime = runtime_for_warmup_concurrency();
+        let runtime = runtime_for_all_contract_sets();
         let contract_set = crate::DatalensRuntimeContractSet {
             dao_code: "demo-dao".to_owned(),
             contract_set_id: "demo-dao:1:governor".to_owned(),
@@ -3349,7 +3160,6 @@ mod tests {
                 query_limits: QueryLimitConfig {
                     block_range_limit: 1_000,
                 },
-                warmup: Default::default(),
                 dao_contracts: None,
                 chains: Vec::new(),
             },
@@ -3371,31 +3181,6 @@ mod tests {
         assert!(!contract_runtime.onchain_refresh_tick.enabled);
         assert!(!contract_runtime.onchain_refresh_deferred_drain_enabled);
         assert!(!options.onchain_refresh_deferred_drain_enabled);
-    }
-
-    #[test]
-    fn test_warmup_startup_concurrency_uses_query_limit_without_exceeding_contract_sets() {
-        let mut runtime = runtime_for_warmup_concurrency();
-        runtime.datalens_query_concurrency.global_max_in_flight = Some(8);
-
-        assert_eq!(warmup_startup_global_concurrency(&runtime, 50), 8);
-        assert_eq!(warmup_startup_global_concurrency(&runtime, 3), 3);
-    }
-
-    #[test]
-    fn test_warmup_startup_concurrency_defaults_to_bounded_parallelism() {
-        let runtime = runtime_for_warmup_concurrency();
-
-        assert_eq!(warmup_startup_global_concurrency(&runtime, 50), 4);
-        assert_eq!(warmup_startup_global_concurrency(&runtime, 0), 1);
-    }
-
-    #[test]
-    fn test_warmup_startup_global_concurrency_does_not_use_per_chain_limit() {
-        let mut runtime = runtime_for_warmup_concurrency();
-        runtime.datalens_query_concurrency.per_chain_max_in_flight = Some(1);
-
-        assert_eq!(warmup_startup_global_concurrency(&runtime, 50), 4);
     }
 
     #[tokio::test]
@@ -4065,7 +3850,7 @@ mod tests {
         );
     }
 
-    fn runtime_for_warmup_concurrency() -> IndexerRuntimeConfig {
+    fn runtime_for_all_contract_sets() -> IndexerRuntimeConfig {
         IndexerRuntimeConfig {
             dao_filter: None,
             contract_set_mode: crate::IndexerContractSetMode::All,
@@ -4089,7 +3874,7 @@ mod tests {
             proposal_timestamp_backfill: Default::default(),
             provisional: ProvisionalRuntimeConfig {
                 enabled: false,
-                finality: DatalensProvisionalFinality::SafeToLatest,
+                finality: DatalensProvisionalFinality::LatestOnly,
             },
             realtime: Default::default(),
         }
@@ -4143,10 +3928,10 @@ mod tests {
     impl DatalensProvisionalLogQueryReader for RecordingProvisionalReader {
         fn query_provisional_logs(
             &mut self,
-            input: QueryInput,
+            request: &crate::DaoLogRequest,
         ) -> std::result::Result<DatalensProvisionalLogQueryResult, DatalensError> {
-            self.finalities.push(input.finality);
-            self.ranges.push((input.range.start, input.range.end));
+            self.finalities.push(Some(request.finality.clone()));
+            self.ranges.push((request.start, request.end));
             if let Some(error) = self.next_error.take() {
                 return Err(error);
             }
@@ -4155,6 +3940,7 @@ mod tests {
             Ok(DatalensProvisionalLogQueryResult {
                 rows: serde_json::json!([]),
                 segments,
+                rollback_from: None,
             })
         }
     }
@@ -4173,6 +3959,15 @@ mod tests {
             segments: &[DatalensProvisionalSegmentWrite],
         ) -> std::result::Result<(), Self::Error> {
             self.writes.extend_from_slice(segments);
+            Ok(())
+        }
+
+        fn rollback_provisional_from(
+            &mut self,
+            _scope: &crate::ProvisionalRollbackScope,
+            _from_block: u64,
+            _reason: &str,
+        ) -> std::result::Result<(), Self::Error> {
             Ok(())
         }
     }

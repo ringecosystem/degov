@@ -30,6 +30,7 @@ export function useMyVotes(): UseVotesReturn {
   const {
     data: votes,
     isLoading: isVotesLoading,
+    isFetching: isVotesFetching,
     error,
     refetch,
   } = useCurrentVotingPower(address as Address);
@@ -57,7 +58,7 @@ export function useMyVotes(): UseVotesReturn {
     hasEnoughVotes,
     refetch,
     isLoading: isVotesLoading || isTokenLoading || isParamsLoading,
-    isFetching: isVotesLoading,
+    isFetching: isVotesFetching,
     error,
   };
 }

@@ -45,6 +45,7 @@ struct RawEvmLogRow {
     #[serde(default)]
     topics: Vec<String>,
     data: String,
+    #[serde(default)]
     removed: bool,
 }
 

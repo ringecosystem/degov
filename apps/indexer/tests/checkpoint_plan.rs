@@ -3,7 +3,7 @@ use std::time::Duration;
 use degov_datalens_indexer::checkpoint::configured_range_progress;
 use degov_datalens_indexer::{
     AdaptiveChunkFeedback, AdaptiveChunkSizer, AdaptiveChunkSizerConfig, CheckpointBlockRange,
-    DatalensWarmupEffectivenessAggregation, IndexerCheckpoint, IndexerCheckpointIdentity,
+    DatalensQueryEffectivenessAggregation, IndexerCheckpoint, IndexerCheckpointIdentity,
     RestoredAdaptiveChunkState, plan_next_checkpoint_range,
 };
 
@@ -234,6 +234,6 @@ fn adaptive_feedback(
         returned_row_count,
         local_processing_write_duration,
         read_duration: Duration::from_millis(10),
-        warmup_effectiveness: DatalensWarmupEffectivenessAggregation::new(),
+        query_effectiveness: DatalensQueryEffectivenessAggregation::new(),
     }
 }

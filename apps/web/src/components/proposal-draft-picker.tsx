@@ -43,6 +43,7 @@ export function ProposalDraftPicker({
   onRetryStartNew,
 }: ProposalDraftPickerProps) {
   const t = useTranslations("proposalEditor.draftPicker");
+  const draftsT = useTranslations("proposalEditor.drafts");
   const daoConfig = useDaoConfig();
   const { address } = useAccount();
   const { ensureAuth, isAuthenticating } = useEnsureAuth();
@@ -58,13 +59,16 @@ export function ProposalDraftPicker({
   }, [ensureAuth]);
 
   useEffect(() => {
-    if (!open || !address) return;
+    if (!open || !address) {
+      attemptedAddressRef.current = null;
+      return;
+    }
     const normalized = address.toLowerCase();
-    if (attemptedAddressRef.current === normalized && authReady) return;
+    if (attemptedAddressRef.current === normalized) return;
     attemptedAddressRef.current = normalized;
     setAuthReady(false);
     void authenticate();
-  }, [address, authReady, authenticate, open]);
+  }, [address, authenticate, open]);
 
   const draftsQuery = useProposalDrafts(
     daoConfig?.code ?? "",
@@ -79,6 +83,8 @@ export function ProposalDraftPicker({
     if (
       !open ||
       !closeWhenEmpty ||
+      !authReady ||
+      draftsQuery.isFetching ||
       startNewDisabled ||
       startNewLoading ||
       !draftsQuery.isSuccess ||
@@ -89,7 +95,9 @@ export function ProposalDraftPicker({
     onOpenChange(false);
     onStartNew?.();
   }, [
+    authReady,
     closeWhenEmpty,
+    draftsQuery.isFetching,
     drafts.length,
     draftsQuery.isSuccess,
     onOpenChange,
@@ -101,17 +109,9 @@ export function ProposalDraftPicker({
 
   const loading =
     isAuthenticating || (!authReady && !authFailed) || draftsQuery.isLoading;
-  const visibleOpen =
-    open &&
-    (!closeWhenEmpty ||
-      authFailed ||
-      draftsQuery.isError ||
-      startNewDisabled ||
-      startNewLoading ||
-      (!loading && drafts.length > 0));
 
   return (
-    <Dialog open={visibleOpen} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[520px] max-w-[calc(100vw-24px)] rounded-[26px] border-border/20 bg-card p-[20px] sm:rounded-[26px]">
         <DialogHeader className="flex w-full flex-row items-start justify-between gap-[16px]">
           <div className="space-y-[4px] text-left">
@@ -135,13 +135,23 @@ export function ProposalDraftPicker({
 
         <div className="max-h-[min(420px,60vh)] overflow-y-auto py-[4px]">
           {loading ? (
-            <p className="py-[36px] text-center text-[14px] text-muted-foreground">
-              {t("loading")}
+            <p
+              role="status"
+              className="py-[36px] text-center text-[14px] text-muted-foreground"
+            >
+              {t(authReady ? "loading" : "authWaiting")}
             </p>
           ) : authFailed || draftsQuery.isError ? (
             <div className="py-[24px] text-center">
               <p className="text-[14px] font-semibold">{t("loadFailed")}</p>
-              <Button className="mt-[12px]" size="sm" onClick={authenticate}>
+              <Button
+                className="mt-[12px]"
+                size="sm"
+                onClick={() => {
+                  if (authFailed) void authenticate();
+                  else void draftsQuery.refetch();
+                }}
+              >
                 {t("retry")}
               </Button>
             </div>
@@ -175,15 +185,25 @@ export function ProposalDraftPicker({
                   </span>
                 </button>
               ))}
+              {draftsQuery.hasNextPage && (
+                <Button
+                  variant="outline"
+                  className="mt-[12px] w-full"
+                  isLoading={draftsQuery.isFetchingNextPage}
+                  onClick={() => void draftsQuery.fetchNextPage()}
+                >
+                  {draftsT("loadMore")}
+                </Button>
+              )}
             </div>
           )}
         </div>
 
-        {onStartNew && !loading && !authFailed && (
+        {onStartNew && (
           <div className="space-y-[8px]">
             <Button
               className="w-full rounded-[100px]"
-              disabled={startNewDisabled}
+              disabled={startNewDisabled || startNewLoading}
               isLoading={startNewLoading}
               onClick={onStartNew}
             >
@@ -200,6 +220,8 @@ export function ProposalDraftPicker({
                     type="button"
                     variant="ghost"
                     size="sm"
+                    isLoading={startNewLoading}
+                    disabled={startNewLoading}
                     onClick={onRetryStartNew}
                   >
                     {t("retry")}

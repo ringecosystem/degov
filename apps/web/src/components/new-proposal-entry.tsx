@@ -33,7 +33,7 @@ export function NewProposalEntry({
   const t = useTranslations("proposalEditor.entry");
   const daoConfig = useDaoConfig();
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const {
     hasEnoughVotes,
     proposalThreshold,
@@ -90,6 +90,7 @@ export function NewProposalEntry({
 
       {draftsEnabled && isConnected && (
         <ProposalDraftPicker
+          key={address?.toLowerCase()}
           open={draftPickerOpen}
           onOpenChange={setDraftPickerOpen}
           closeWhenEmpty

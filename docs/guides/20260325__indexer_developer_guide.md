@@ -61,6 +61,28 @@ just test
 configuration, migration, and startup workflow, use the root
 [deployment guide](../../README.md#datalens-backed-indexer-deployment).
 
+### Offline Rust convention check
+
+With Node.js 22 or newer, run this from the repository root to check only the
+indexer's Rust sources and Cargo manifests/lockfiles:
+
+```bash
+DEGOV_RUST_CONVENTIONS_ROOT=apps/indexer node apps/indexer/scripts/check-rust-conventions.mjs
+```
+
+`DEGOV_RUST_CONVENTIONS_ROOT` selects the directory to scan; relative paths are
+resolved from the current working directory. Without it, the script scans the
+repository. It skips `target` and `node_modules` directories. Success prints
+`Rust convention check passed`; violations print file paths and reasons and
+exit with status 1. Check those files against the
+[Rust technical conventions](../spec/datalens-rust-technical-conventions.md),
+including library logging/error boundaries and the alloy dependency rule.
+
+This is a static, offline check using Node.js built-ins. It needs no package
+installation, Rust compiler, Docker, database, Datalens credentials, or RPC
+endpoint. Passing it does not prove that Rust compiles or that database,
+Datalens, or onchain integration works; run the relevant tests separately.
+
 ## Database Schema
 
 `apps/indexer/migrations/0001_init.sql` is the canonical fresh index database

@@ -74,8 +74,7 @@ All preconditions must be true before scheduling production cutover.
   namespace.
 - Datalens application auth is configured for the production application, such
   as `degov-live`, with token delivery through secret management.
-- Required chain datasets are enabled in Datalens, especially the EVM log
-  dataset selected by `DATALENS_DATASET_FAMILY` and `DATALENS_DATASET_NAME`.
+- Required chain datasets are enabled in Datalens. Indexer log queries always use `evm.logs`.
 - Datalens cache and object storage are healthy for the selected chain and
   historical ranges. Follow the cache checks in the observability runbook.
 - DeGov Datalens-native image is built, published, and pinned by immutable tag,
@@ -100,8 +99,6 @@ Collect these per DAO before starting:
 export DAO_CODE=<dao-code>
 export CHAIN_ID=<chain-id>
 export DATALENS_CHAIN_NAME=<configured-datalens-chain-name>
-export DATALENS_DATASET_FAMILY=evm
-export DATALENS_DATASET_NAME=logs
 export DATALENS_APPLICATION=<production-datalens-application>
 export DATALENS_ENDPOINT=<datalens-service-base-url>
 export DEGOV_INDEXER_CONFIG_FILE=<mounted-indexer-config-file>

@@ -33,7 +33,6 @@ export function ThemedLogo({
         alt=""
         width={width}
         height={height}
-        priority
         className={cn("themed-logo-light", imageClassName)}
       />
       <Image
@@ -41,7 +40,6 @@ export function ThemedLogo({
         alt=""
         width={width}
         height={height}
-        priority
         className={cn("themed-logo-dark", imageClassName)}
       />
     </span>
