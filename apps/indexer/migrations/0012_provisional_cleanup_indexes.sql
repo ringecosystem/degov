@@ -1,0 +1,4 @@
+-- Provisional cleanup hot-path index migration marker.
+--
+-- Index creation runs at runtime startup via CREATE INDEX CONCURRENTLY in
+-- ensure_runtime_indexes(). This migration only advances sqlx history.

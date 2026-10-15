@@ -451,14 +451,7 @@ async fn read_finalized_checkpoint_height(
         .flatten())
 }
 
-async fn finalized_provisional_segment_ids(
-    transaction: &mut Transaction<'_, Postgres>,
-    identity: &IndexerCheckpointIdentity,
-    source: Option<&str>,
-    finalized_height: i64,
-) -> Result<(Vec<String>, Vec<String>), PostgresIndexerRunnerStoreError> {
-    let rows = sqlx::query(
-        "SELECT
+const FINALIZED_PROVISIONAL_SEGMENT_SELECT: &str = "SELECT
              id,
              range_start_block::BIGINT AS range_start_block,
              range_end_block::BIGINT AS range_end_block,
@@ -468,18 +461,44 @@ async fn finalized_provisional_segment_ids(
          WHERE status = 'available'
            AND dao_code = $1
            AND chain_id IS NOT DISTINCT FROM $2
-           AND contract_set_id = $3
-           AND ($4::TEXT IS NULL OR source = $4)
+           AND contract_set_id = $3";
+
+async fn finalized_provisional_segment_ids(
+    transaction: &mut Transaction<'_, Postgres>,
+    identity: &IndexerCheckpointIdentity,
+    source: Option<&str>,
+    finalized_height: i64,
+) -> Result<(Vec<String>, Vec<String>), PostgresIndexerRunnerStoreError> {
+    let rows = match source {
+        Some(source) => {
+            sqlx::query(&format!(
+                "{FINALIZED_PROVISIONAL_SEGMENT_SELECT}
+           AND source = $4
            AND range_end_block <= $5::NUMERIC(78, 0)
-           AND COALESCE(anchor_block_number, range_end_block) <= $5::NUMERIC(78, 0)",
-    )
-    .bind(&identity.dao_code)
-    .bind(identity.chain_id)
-    .bind(&identity.contract_set_id)
-    .bind(source)
-    .bind(finalized_height)
-    .fetch_all(&mut **transaction)
-    .await?;
+           AND COALESCE(anchor_block_number, range_end_block) <= $5::NUMERIC(78, 0)"
+            ))
+            .bind(&identity.dao_code)
+            .bind(identity.chain_id)
+            .bind(&identity.contract_set_id)
+            .bind(source)
+            .bind(finalized_height)
+            .fetch_all(&mut **transaction)
+            .await?
+        }
+        None => {
+            sqlx::query(&format!(
+                "{FINALIZED_PROVISIONAL_SEGMENT_SELECT}
+           AND range_end_block <= $4::NUMERIC(78, 0)
+           AND COALESCE(anchor_block_number, range_end_block) <= $4::NUMERIC(78, 0)"
+            ))
+            .bind(&identity.dao_code)
+            .bind(identity.chain_id)
+            .bind(&identity.contract_set_id)
+            .bind(finalized_height)
+            .fetch_all(&mut **transaction)
+            .await?
+        }
+    };
 
     let mut finalize = Vec::new();
     let mut invalid = Vec::new();
@@ -583,26 +602,50 @@ async fn mark_available_segments_invalid(
     reason: &str,
     from_block: i64,
 ) -> Result<usize, PostgresIndexerRunnerStoreError> {
-    let result = sqlx::query(
-        "UPDATE degov_provisional_segment
-         SET status = 'invalid',
-             error = $5,
-             updated_at = now()
-         WHERE status = 'available'
-           AND dao_code = $1
-           AND chain_id IS NOT DISTINCT FROM $2
-           AND contract_set_id = $3
-           AND ($4::TEXT IS NULL OR source = $4)
-           AND range_end_block >= $6::NUMERIC(78, 0)",
-    )
-    .bind(&scope.dao_code)
-    .bind(scope.chain_id)
-    .bind(&scope.contract_set_id)
-    .bind(scope.source.as_deref())
-    .bind(reason)
-    .bind(from_block)
-    .execute(&mut **transaction)
-    .await?;
+    let result = match scope.source.as_deref() {
+        Some(source) => {
+            sqlx::query(
+                "UPDATE degov_provisional_segment
+                 SET status = 'invalid',
+                     error = $5,
+                     updated_at = now()
+                 WHERE status = 'available'
+                   AND dao_code = $1
+                   AND chain_id IS NOT DISTINCT FROM $2
+                   AND contract_set_id = $3
+                   AND source = $4
+                   AND range_end_block >= $6::NUMERIC(78, 0)",
+            )
+            .bind(&scope.dao_code)
+            .bind(scope.chain_id)
+            .bind(&scope.contract_set_id)
+            .bind(source)
+            .bind(reason)
+            .bind(from_block)
+            .execute(&mut **transaction)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                "UPDATE degov_provisional_segment
+                 SET status = 'invalid',
+                     error = $4,
+                     updated_at = now()
+                 WHERE status = 'available'
+                   AND dao_code = $1
+                   AND chain_id IS NOT DISTINCT FROM $2
+                   AND contract_set_id = $3
+                   AND range_end_block >= $5::NUMERIC(78, 0)",
+            )
+            .bind(&scope.dao_code)
+            .bind(scope.chain_id)
+            .bind(&scope.contract_set_id)
+            .bind(reason)
+            .bind(from_block)
+            .execute(&mut **transaction)
+            .await?
+        }
+    };
 
     Ok(result.rows_affected() as usize)
 }
@@ -1262,5 +1305,14 @@ mod provisional_segment_sql_tests {
                 "ON CONFLICT ON CONSTRAINT degov_provisional_vote_cast_group_overlay_scope_unique"
             )
         );
+    }
+
+    #[test]
+    fn test_finalized_provisional_segment_select_avoids_optional_source_or() {
+        assert!(
+            !FINALIZED_PROVISIONAL_SEGMENT_SELECT.contains("IS NULL OR source"),
+            "cleanup select should split optional source outside the shared prefix"
+        );
+        assert!(FINALIZED_PROVISIONAL_SEGMENT_SELECT.contains("status = 'available'"));
     }
 }
