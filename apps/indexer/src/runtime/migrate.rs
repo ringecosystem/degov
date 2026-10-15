@@ -899,6 +899,42 @@ async fn repair_timestamp_millis_column(
     Ok(result.rows_affected())
 }
 
+async fn purge_stale_provisional_table_rows(
+    connection: &mut PgConnection,
+    table: &str,
+    retention_days: u64,
+    batch_size: i64,
+) -> Result<u64> {
+    let sql = format!(
+        "WITH doomed AS (
+            SELECT ctid
+            FROM {table}
+            WHERE status IN ('finalized', 'invalid')
+              AND updated_at < now() - ($1::BIGINT * interval '1 day')
+            LIMIT $2
+         )
+         DELETE FROM {table}
+         WHERE ctid IN (SELECT ctid FROM doomed)"
+    );
+
+    let mut deleted_total = 0_u64;
+    loop {
+        let deleted = sqlx::query(&sql)
+            .bind(retention_days as i64)
+            .bind(batch_size)
+            .execute(&mut *connection)
+            .await
+            .with_context(|| format!("purge stale rows from {table}"))?
+            .rows_affected();
+        deleted_total += deleted;
+        if deleted < batch_size as u64 {
+            break;
+        }
+    }
+
+    Ok(deleted_total)
+}
+
 async fn purge_stale_provisional_records(connection: &mut PgConnection) -> Result<()> {
     let retention_days = optional_env_u64("DEGOV_PROVISIONAL_RETENTION_DAYS")?.unwrap_or(7);
     if retention_days == 0 {
@@ -919,45 +955,18 @@ async fn purge_stale_provisional_records(connection: &mut PgConnection) -> Resul
 
     let mut total_deleted = 0_u64;
     for table in OVERLAY_TABLES {
-        let sql = format!(
-            "WITH doomed AS (
-                SELECT ctid
-                FROM {table}
-                WHERE status IN ('finalized', 'invalid')
-                  AND updated_at < now() - ($1::BIGINT * interval '1 day')
-                LIMIT $2
-             )
-             DELETE FROM {table}
-             WHERE ctid IN (SELECT ctid FROM doomed)"
-        );
-        let deleted = sqlx::query(&sql)
-            .bind(retention_days as i64)
-            .bind(batch_size)
-            .execute(&mut *connection)
-            .await
-            .with_context(|| format!("purge stale rows from {table}"))?
-            .rows_affected();
-        total_deleted += deleted;
+        total_deleted +=
+            purge_stale_provisional_table_rows(connection, table, retention_days, batch_size)
+                .await?;
     }
 
-    let deleted_segments = sqlx::query(
-        "WITH doomed AS (
-            SELECT ctid
-            FROM degov_provisional_segment
-            WHERE status IN ('finalized', 'invalid')
-              AND updated_at < now() - ($1::BIGINT * interval '1 day')
-            LIMIT $2
-         )
-         DELETE FROM degov_provisional_segment
-         WHERE ctid IN (SELECT ctid FROM doomed)",
+    total_deleted += purge_stale_provisional_table_rows(
+        connection,
+        "degov_provisional_segment",
+        retention_days,
+        batch_size,
     )
-    .bind(retention_days as i64)
-    .bind(batch_size)
-    .execute(&mut *connection)
-    .await
-    .context("purge stale provisional segments")?
-    .rows_affected();
-    total_deleted += deleted_segments;
+    .await?;
 
     if total_deleted > 0 {
         log::info!(
@@ -1003,7 +1012,7 @@ async fn repair_deferred_candidate_index_bloat_once(connection: &mut PgConnectio
     .context("measure onchain refresh deferred candidate row estimate")?;
 
     let index_bytes = sqlx::query_scalar::<_, i64>(
-        "SELECT COALESCE(SUM(pg_relation_size(indexrelid)), 0)::BIGINT
+        "SELECT (COALESCE(SUM(pg_relation_size(indexrelid)), 0::BIGINT))::BIGINT
          FROM pg_index
          WHERE indrelid IN (
             SELECT oid
