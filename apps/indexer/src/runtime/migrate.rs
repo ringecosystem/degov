@@ -1168,6 +1168,22 @@ async fn drop_invalid_runtime_indexes_for_connection(connection: &mut PgConnecti
     drop_invalid_runtime_index(connection, "provisional_delegate_profile_delta_scope_idx").await?;
     drop_invalid_runtime_index(connection, "provisional_contributor_live_graphql_scope_idx")
         .await?;
+    drop_invalid_runtime_index(connection, "degov_provisional_segment_available_scope_range_idx")
+        .await?;
+    drop_invalid_runtime_index(
+        connection,
+        "degov_provisional_segment_available_source_range_idx",
+    )
+    .await?;
+    drop_invalid_runtime_index(connection, "degov_provisional_segment_available_coverage_idx")
+        .await?;
+    drop_invalid_runtime_index(connection, "onchain_refresh_task_active_account_lookup_idx")
+        .await?;
+    drop_invalid_runtime_index(
+        connection,
+        "onchain_refresh_deferred_candidate_account_lookup_idx",
+    )
+    .await?;
 
     Ok(())
 }
