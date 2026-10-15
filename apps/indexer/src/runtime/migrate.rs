@@ -68,6 +68,8 @@ pub async fn apply_runtime_maintenance(pool: &PgPool) -> Result<()> {
         repair_delegate_effective_counts_once(&mut connection).await?;
         repair_vote_timestamps_millis_once(&mut connection).await?;
         repair_token_timestamps_millis_once(&mut connection).await?;
+        repair_deferred_candidate_index_bloat_once(&mut connection).await?;
+        purge_stale_provisional_records(&mut connection).await?;
         drop_obsolete_runtime_indexes_for_connection(&mut connection).await?;
 
         Ok(())
@@ -529,6 +531,61 @@ async fn ensure_runtime_indexes(connection: &mut PgConnection) -> Result<()> {
     .await
     .context("ensure live contributor overlay GraphQL scope index")?;
 
+    execute_concurrent_runtime_index(
+        connection,
+        "degov_provisional_segment_available_scope_range_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS degov_provisional_segment_available_scope_range_idx
+         ON degov_provisional_segment (dao_code, chain_id, contract_set_id, range_end_block)
+         WHERE status = 'available'",
+    )
+    .await
+    .context("ensure provisional segment available scope range index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
+        "degov_provisional_segment_available_source_range_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS degov_provisional_segment_available_source_range_idx
+         ON degov_provisional_segment (dao_code, chain_id, contract_set_id, source, range_end_block)
+         WHERE status = 'available'",
+    )
+    .await
+    .context("ensure provisional segment available source range index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
+        "degov_provisional_segment_available_coverage_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS degov_provisional_segment_available_coverage_idx
+         ON degov_provisional_segment (
+            dao_code, chain_id, contract_set_id, source, selector, range_end_block DESC
+         )
+         WHERE status = 'available' AND dao_code IS NOT NULL AND chain_id IS NOT NULL",
+    )
+    .await
+    .context("ensure provisional segment available coverage index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
+        "onchain_refresh_task_active_account_lookup_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_task_active_account_lookup_idx
+         ON onchain_refresh_task (
+            contract_set_id, chain_id, dao_code, governor_address, token_address, account
+         )
+         WHERE status IN ('pending', 'processing', 'failed')",
+    )
+    .await
+    .context("ensure active onchain refresh task account lookup index")?;
+
+    execute_concurrent_runtime_index(
+        connection,
+        "onchain_refresh_deferred_candidate_account_lookup_idx",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS onchain_refresh_deferred_candidate_account_lookup_idx
+         ON onchain_refresh_deferred_candidate (
+            contract_set_id, chain_id, dao_code, governor_address, token_address, account
+         )",
+    )
+    .await
+    .context("ensure onchain refresh deferred candidate account lookup index")?;
+
     Ok(())
 }
 
@@ -840,6 +897,192 @@ async fn repair_timestamp_millis_column(
         .await?;
 
     Ok(result.rows_affected())
+}
+
+async fn purge_stale_provisional_table_rows(
+    connection: &mut PgConnection,
+    table: &str,
+    retention_days: u64,
+    batch_size: i64,
+) -> Result<u64> {
+    let sql = format!(
+        "WITH doomed AS (
+            SELECT ctid
+            FROM {table}
+            WHERE status IN ('finalized', 'invalid')
+              AND updated_at < now() - ($1::BIGINT * interval '1 day')
+            LIMIT $2
+         )
+         DELETE FROM {table}
+         WHERE ctid IN (SELECT ctid FROM doomed)"
+    );
+
+    let mut deleted_total = 0_u64;
+    loop {
+        let deleted = sqlx::query(&sql)
+            .bind(retention_days as i64)
+            .bind(batch_size)
+            .execute(&mut *connection)
+            .await
+            .with_context(|| format!("purge stale rows from {table}"))?
+            .rows_affected();
+        deleted_total += deleted;
+        if deleted < batch_size as u64 {
+            break;
+        }
+    }
+
+    Ok(deleted_total)
+}
+
+async fn purge_stale_provisional_records(connection: &mut PgConnection) -> Result<()> {
+    let retention_days = optional_env_u64("DEGOV_PROVISIONAL_RETENTION_DAYS")?.unwrap_or(7);
+    if retention_days == 0 {
+        return Ok(());
+    }
+
+    let batch_size = optional_env_u64("DEGOV_PROVISIONAL_PURGE_BATCH_SIZE")?.unwrap_or(5_000);
+    let batch_size = i64::try_from(batch_size).unwrap_or(5_000);
+
+    const OVERLAY_TABLES: &[&str] = &[
+        "degov_provisional_contributor_power_overlay",
+        "degov_provisional_delegate_power_overlay",
+        "degov_provisional_proposal_overlay",
+        "degov_provisional_proposal_event_overlay",
+        "degov_provisional_timelock_operation_overlay",
+        "degov_provisional_vote_cast_group_overlay",
+    ];
+
+    let mut total_deleted = 0_u64;
+    for table in OVERLAY_TABLES {
+        total_deleted +=
+            purge_stale_provisional_table_rows(connection, table, retention_days, batch_size)
+                .await?;
+    }
+
+    total_deleted += purge_stale_provisional_table_rows(
+        connection,
+        "degov_provisional_segment",
+        retention_days,
+        batch_size,
+    )
+    .await?;
+
+    if total_deleted > 0 {
+        log::info!(
+            "DeGov provisional retention purge deleted_rows={} retention_days={} batch_size={}",
+            total_deleted,
+            retention_days,
+            batch_size
+        );
+    }
+
+    Ok(())
+}
+
+async fn repair_deferred_candidate_index_bloat_once(connection: &mut PgConnection) -> Result<()> {
+    const MARKER_ID: &str = "deferred_candidate_index_reindex_v1";
+
+    ensure_runtime_repair_marker_table(connection).await?;
+
+    let already_applied = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM degov_runtime_repair_marker
+            WHERE id = $1
+         )",
+    )
+    .bind(MARKER_ID)
+    .fetch_one(&mut *connection)
+    .await
+    .context("check deferred candidate index reindex marker")?;
+
+    if already_applied {
+        return Ok(());
+    }
+
+    let live_rows = sqlx::query_scalar::<_, f32>(
+        "SELECT COALESCE(MAX(reltuples), 0)::REAL
+         FROM pg_class
+         WHERE relname = 'onchain_refresh_deferred_candidate'
+           AND relkind = 'r'",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("measure onchain refresh deferred candidate row estimate")?;
+
+    let index_bytes = sqlx::query_scalar::<_, i64>(
+        "SELECT (COALESCE(SUM(pg_relation_size(indexrelid)), 0::BIGINT))::BIGINT
+         FROM pg_index
+         WHERE indrelid IN (
+            SELECT oid
+            FROM pg_class
+            WHERE relname = 'onchain_refresh_deferred_candidate'
+              AND relkind = 'r'
+         )",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .context("measure onchain refresh deferred candidate index footprint")?;
+
+    if live_rows <= 10_000_f32 && index_bytes >= 1_000_000_000 {
+        for index_name in [
+            "onchain_refresh_deferred_candidate_account_unique",
+            "onchain_refresh_deferred_candidate_drain_idx",
+            "onchain_refresh_deferred_candidate_scope_drain_idx",
+        ] {
+            let exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_class
+                    WHERE relkind = 'i'
+                      AND relname = $1
+                 )",
+            )
+            .bind(index_name)
+            .fetch_one(&mut *connection)
+            .await
+            .with_context(|| format!("check {index_name} exists"))?;
+            if !exists {
+                continue;
+            }
+            sqlx::query(&format!("REINDEX INDEX CONCURRENTLY {index_name}"))
+                .execute(&mut *connection)
+                .await
+                .with_context(|| format!("reindex {index_name}"))?;
+        }
+        log::info!(
+            "DeGov deferred candidate indexes reindexed live_rows={} index_bytes={}",
+            live_rows,
+            index_bytes
+        );
+    }
+
+    sqlx::query(
+        "INSERT INTO degov_runtime_repair_marker (id, applied_at)
+         VALUES (
+            $1,
+            FLOOR(EXTRACT(EPOCH FROM now()) * 1000)::NUMERIC(78, 0)
+         )
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(MARKER_ID)
+    .execute(&mut *connection)
+    .await
+    .context("mark deferred candidate index reindex complete")?;
+
+    Ok(())
+}
+
+fn optional_env_u64(name: &str) -> Result<Option<u64>> {
+    match std::env::var(name) {
+        Ok(value) => value
+            .parse::<u64>()
+            .map(Some)
+            .with_context(|| format!("parse {name} as u64")),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("read {name}")),
+    }
 }
 
 fn optional_env_bool(name: &str) -> Result<Option<bool>> {
