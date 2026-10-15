@@ -30,14 +30,10 @@ import { useEnsureAuth } from "@/hooks/useEnsureAuth";
 import { useMyVotes } from "@/hooks/useMyVotes";
 import { useProposal } from "@/hooks/useProposal";
 import { useProposalDraftAutosave } from "@/hooks/useProposalDraftAutosave";
-import {
-  useProposalDraft,
-  useProposalDrafts,
-} from "@/hooks/useProposalDrafts";
+import { useProposalDraft } from "@/hooks/useProposalDrafts";
 import { useUnsavedChangesAlert } from "@/hooks/useUnsavedChangesAlert";
 import { Link, useRouter } from "@/i18n/navigation";
 import type { ProposalDraft } from "@/services/graphql/types/proposal-drafts";
-import { formatTimeAgo } from "@/utils/date";
 import {
   hasMeaningfulProposalDraftContent,
   parseProposalDraftDocument,
@@ -108,10 +104,14 @@ function ProposalEditor({
   initialDraft,
   initialDocument,
   syncEnabled,
+  syncControls,
+  onDocumentChange,
 }: {
   initialDraft?: ProposalDraft;
   initialDocument?: ProposalDraftDocument;
   syncEnabled: boolean;
+  syncControls?: React.ReactNode;
+  onDocumentChange?: (document: ProposalDraftDocument) => void;
 }) {
   const t = useTranslations("proposalEditor.page");
   const schemaT = useTranslations("proposalEditor");
@@ -166,6 +166,10 @@ function ProposalEditor({
     () => ({ actions, activeActionId: actionUuid, tab }),
     [actionUuid, actions, tab]
   );
+  useEffect(() => {
+    onDocumentChange?.(draftDocument);
+  }, [draftDocument, onDocumentChange]);
+
   const currentPayload = useMemo(() => {
     try {
       return serializeProposalDraftDocument(draftDocument);
@@ -470,6 +474,8 @@ function ProposalEditor({
           )}
         </header>
 
+        {syncControls}
+
         <div className="flex gap-[30px] flex-col lg:flex-row">
           <Sidebar
             actions={actions}
@@ -572,10 +578,16 @@ export default function NewProposal() {
   const draftId = searchParams?.get("draft") ?? undefined;
   const { address, isConnected } = useAccount();
   const { ensureAuth, isAuthenticating } = useEnsureAuth();
-  const [authReady, setAuthReady] = useState(false);
+  const [authenticatedAddress, setAuthenticatedAddress] = useState<string | null>(
+    null
+  );
+  const authReady = Boolean(
+    address && authenticatedAddress === address.toLowerCase()
+  );
+  const [authPending, setAuthPending] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
   const [continueUnsynced, setContinueUnsynced] = useState(false);
-  const [startFresh, setStartFresh] = useState(false);
+  const [newDocument, setNewDocument] = useState<ProposalDraftDocument>();
   const attemptedAddressRef = useRef<string | null>(null);
 
   const draftsEnabled = isProposalFeatureEnabled(
@@ -586,38 +598,40 @@ export default function NewProposal() {
 
   const authenticateDrafts = useCallback(async () => {
     setAuthFailed(false);
-    const result = await ensureAuth();
-    setAuthReady(result.success);
-    setAuthFailed(!result.success);
-  }, [ensureAuth]);
+    setAuthPending(true);
+    try {
+      const result = await ensureAuth();
+      setAuthenticatedAddress(
+        result.success ? address?.toLowerCase() ?? null : null
+      );
+      setAuthFailed(!result.success);
+    } finally {
+      setAuthPending(false);
+    }
+  }, [address, ensureAuth]);
 
   useEffect(() => {
-    if (!draftsEnabled || !isConnected || !address || continueUnsynced) return;
+    if (!draftId || !draftsEnabled || !isConnected || !address || continueUnsynced) {
+      return;
+    }
     const normalized = address.toLowerCase();
     if (attemptedAddressRef.current === normalized) return;
     attemptedAddressRef.current = normalized;
-    setAuthReady(false);
+    setAuthenticatedAddress(null);
     void authenticateDrafts();
   }, [
     address,
     authenticateDrafts,
     continueUnsynced,
     draftsEnabled,
+    draftId,
     isConnected,
   ]);
 
-  const draftsQuery = useProposalDrafts(
-    daoConfig?.code ?? "",
-    draftsEnabled && authReady && !draftId
-  );
   const draftQuery = useProposalDraft(
     daoConfig?.code ?? "",
     draftId,
     draftsEnabled && authReady && Boolean(draftId)
-  );
-  const recentDrafts = useMemo(
-    () => draftsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [draftsQuery.data]
   );
   const parsedDraft = useMemo(() => {
     const draft = draftQuery.data;
@@ -630,7 +644,52 @@ export default function NewProposal() {
   }, [draftQuery.data]);
 
   if (!draftsEnabled || continueUnsynced) {
-    return <ProposalEditor syncEnabled={false} />;
+    return (
+      <ProposalEditor
+        key={`new:${address?.toLowerCase() ?? ""}`}
+        initialDocument={newDocument}
+        onDocumentChange={setNewDocument}
+        syncEnabled={false}
+      />
+    );
+  }
+
+  if (!draftId) {
+    return (
+      <ProposalEditor
+        key={`new:${address?.toLowerCase() ?? ""}`}
+        initialDocument={newDocument}
+        onDocumentChange={setNewDocument}
+        syncEnabled={authReady}
+        syncControls={
+          !authReady && (
+            <div className="flex flex-wrap items-center justify-between gap-[12px] rounded-[14px] bg-card p-[20px] shadow-card">
+              <p role="status" className="text-[14px] text-muted-foreground">
+                {t(
+                  authPending
+                    ? "draftSyncWaiting"
+                    : authFailed
+                      ? "draftSyncFailed"
+                      : "draftSyncOptional"
+                )}
+              </p>
+              <div className="flex flex-wrap gap-[10px]">
+                <Button
+                  onClick={authenticateDrafts}
+                  isLoading={authPending}
+                  disabled={authPending}
+                >
+                  {t(authFailed ? "retryDraftSync" : "enableDraftSync")}
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/proposals/drafts">{t("viewDrafts")}</Link>
+                </Button>
+              </div>
+            </div>
+          )
+        }
+      />
+    );
   }
 
   if (!isConnected || !address) {
@@ -644,8 +703,13 @@ export default function NewProposal() {
   if (isAuthenticating || (!authReady && !authFailed)) {
     return (
       <DraftGate>
-        <div className="w-full text-center text-muted-foreground">
-          {t("loadingDrafts")}
+        <div className="w-full text-center">
+          <p role="status" className="text-muted-foreground">
+            {t("draftAuthWaiting")}
+          </p>
+          <Button variant="outline" className="mt-[20px]" asChild>
+            <Link href="/proposals/new">{t("startNewProposal")}</Link>
+          </Button>
         </div>
       </DraftGate>
     );
@@ -675,115 +739,46 @@ export default function NewProposal() {
     );
   }
 
-  if (draftId) {
-    if (draftQuery.isLoading) {
-      return (
-        <DraftGate>
-          <div className="w-full text-center text-muted-foreground">
-            {t("loadingDraft")}
-          </div>
-        </DraftGate>
-      );
-    }
-    if (draftQuery.isError || !draftQuery.data || !parsedDraft) {
-      return (
-        <DraftGate>
-          <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
-            <h2 className="text-[20px] font-semibold">
-              {t("draftLoadFailed")}
-            </h2>
-            <p className="mt-[8px] text-[14px] text-muted-foreground">
-              {t("draftLoadFailedDescription")}
-            </p>
-            <div className="mt-[20px] flex gap-[10px]">
-              <Button onClick={() => draftQuery.refetch()}>{t("retry")}</Button>
-              <Button variant="outline" asChild>
-                <Link href="/proposals/drafts">{t("viewDrafts")}</Link>
-              </Button>
-            </div>
-          </div>
-        </DraftGate>
-      );
-    }
-    return (
-      <ProposalEditor
-        initialDraft={draftQuery.data}
-        initialDocument={parsedDraft}
-        syncEnabled
-      />
-    );
-  }
-
-  if (draftsQuery.isLoading) {
+  if (draftQuery.isLoading) {
     return (
       <DraftGate>
-        <div className="w-full text-center text-muted-foreground">
-          {t("loadingDrafts")}
+        <div className="w-full text-center">
+          <p role="status" className="text-muted-foreground">
+            {t("loadingDraft")}
+          </p>
+          <Button variant="outline" className="mt-[20px]" asChild>
+            <Link href="/proposals/new">{t("startNewProposal")}</Link>
+          </Button>
         </div>
       </DraftGate>
     );
   }
-
-  if (draftsQuery.isError) {
+  if (draftQuery.isError || !draftQuery.data || !parsedDraft) {
     return (
       <DraftGate>
         <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
           <h2 className="text-[20px] font-semibold">
-            {t("draftSyncUnavailable")}
+            {t("draftLoadFailed")}
           </h2>
           <p className="mt-[8px] text-[14px] text-muted-foreground">
-            {t("draftSyncUnavailableDescription")}
+            {t("draftLoadFailedDescription")}
           </p>
           <div className="mt-[20px] flex gap-[10px]">
-            <Button onClick={() => draftsQuery.refetch()}>{t("retry")}</Button>
-            <Button
-              variant="outline"
-              onClick={() => setContinueUnsynced(true)}
-            >
-              {t("continueWithoutSync")}
-            </Button>
-          </div>
-        </div>
-      </DraftGate>
-    );
-  }
-
-  if (recentDrafts.length > 0 && !startFresh) {
-    return (
-      <DraftGate>
-        <div className="w-full rounded-[14px] bg-card p-[24px] shadow-card">
-          <h2 className="text-[20px] font-semibold">{t("continueDraft")}</h2>
-          <p className="mt-[8px] text-[14px] text-muted-foreground">
-            {t("continueDraftDescription")}
-          </p>
-          <div className="mt-[20px] divide-y divide-border/30">
-            {recentDrafts.slice(0, 3).map((draft) => (
-              <Link
-                key={draft.id}
-                href={`/proposals/new?draft=${draft.id}`}
-                className="flex items-center justify-between gap-[20px] py-[14px] hover:opacity-70"
-              >
-                <span className="min-w-0 truncate font-medium">
-                  {draft.title}
-                </span>
-                <span className="shrink-0 text-[12px] text-muted-foreground">
-                  {formatTimeAgo(String(new Date(draft.utime).getTime()))}
-                </span>
-              </Link>
-            ))}
-          </div>
-          <div className="mt-[20px] flex flex-wrap gap-[10px]">
-            <Button onClick={() => setStartFresh(true)}>
-              {t("startNewProposal")}
-            </Button>
+            <Button onClick={() => draftQuery.refetch()}>{t("retry")}</Button>
             <Button variant="outline" asChild>
-              <Link href="/proposals/drafts">{t("viewAllDrafts")}</Link>
+              <Link href="/proposals/drafts">{t("viewDrafts")}</Link>
             </Button>
           </div>
         </div>
       </DraftGate>
     );
   }
-
-  return <ProposalEditor syncEnabled />;
+  return (
+    <ProposalEditor
+      key={`${address?.toLowerCase()}:${draftQuery.data.id}`}
+      initialDraft={draftQuery.data}
+      initialDocument={parsedDraft}
+      syncEnabled
+    />
+  );
 }
