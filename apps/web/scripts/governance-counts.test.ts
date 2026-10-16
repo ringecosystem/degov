@@ -51,3 +51,17 @@ test("governance counts fall back to contributors before holder refresh", () => 
     delegatesCount: 289581,
   });
 });
+
+test("governance counts preserve zero holders instead of falling back to contributors", () => {
+  const response: GovernanceCountsResponse = {
+    proposalsPage: {
+      totalCount: 47,
+    },
+    dataMetrics: [{ contributorCount: 289581, holdersCount: 0 }],
+  };
+
+  assert.deepEqual(resolveGovernanceCounts(response), {
+    proposalsCount: 47,
+    delegatesCount: 0,
+  });
+});
