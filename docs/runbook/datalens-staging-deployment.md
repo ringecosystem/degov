@@ -55,7 +55,7 @@ The shared indexer, GraphQL service, and worker must receive:
 - `DATALENS_TOKEN`: application bearer token from GitOps-managed secrets.
 - `DATALENS_APPLICATION`: `degov-staging` for staging validation. Production uses `degov-live`.
 - Log queries are always `evm.logs`. `DATALENS_QUERY_BLOCK_RANGE_LIMIT` is the follow chunk size.
-- Realtime reads use `DEGOV_REALTIME_DATALENS_APPLICATION=degov-realtime` and `DEGOV_REALTIME_DATALENS_TOKEN`. Provisional finality is `latest_only`.
+- Provisional reads reuse `DATALENS_APPLICATION` and `DATALENS_TOKEN` with `DEGOV_PROVISIONAL_FINALITY=latest_only`.
 - `DEGOV_INDEXER_GRAPHQL_BIND_ADDRESS`: local socket address for the service,
   for example `0.0.0.0:4350`.
 - `DEGOV_INDEXER_GRAPHQL_ENDPOINT`: public GraphQL URL used by the service to
