@@ -38,8 +38,6 @@ assert.equal(contract.datalens.endpointEnv, "DATALENS_ENDPOINT");
 assert.equal(contract.datalens.tokenEnv, "DATALENS_TOKEN");
 assert.equal(contract.datalens.applicationEnv, "DATALENS_APPLICATION");
 assert.equal(contract.datalens.application, "degov-staging");
-assert.equal(contract.datalens.dataset.family, "evm");
-assert.equal(contract.datalens.dataset.name, "logs");
 assert.deepEqual(contract.deploymentModel, {
   database: "one shared fresh Datalens indexer database",
   indexer: "one all-mode Datalens indexer workload",
@@ -76,12 +74,12 @@ assert.equal(contract.runtimeEnv.DATALENS_APPLICATION, contract.datalens.applica
 assert.equal(contract.datalens.dataset, "evm.logs");
 assert.equal(contract.runtimeEnv.DATALENS_DATASET_FAMILY, undefined);
 assert.equal(contract.runtimeEnv.DATALENS_DATASET_NAME, undefined);
-assert.equal(
-  contract.runtimeEnv.DEGOV_REALTIME_DATALENS_APPLICATION,
-  contract.datalens.realtimeApplication,
-);
-assert.equal(contract.datalens.realtimeApplication, "degov-realtime");
+assert.equal(contract.datalens.realtimeApplication, undefined);
+assert.equal(contract.runtimeEnv.DEGOV_REALTIME_WORKER_ENABLED, undefined);
+assert.equal(contract.runtimeEnv.DEGOV_REALTIME_DATALENS_APPLICATION, undefined);
 assert.equal(contract.runtimeEnv.DEGOV_REALTIME_DATALENS_TOKEN, undefined);
+assert.doesNotMatch(runbookMarkdown, /DEGOV_REALTIME_/);
+assert.doesNotMatch(runbookMarkdown, /degov-realtime/);
 assert.equal(contract.runtimeEnv.DATALENS_CHAINS_JSON, undefined);
 assert.equal(contract.runtimeEnv.DATALENS_GOVERNOR_ADDRESS, undefined);
 assert.equal(contract.runtimeEnv.DATALENS_GOVERNOR_TOKEN_ADDRESS, undefined);
