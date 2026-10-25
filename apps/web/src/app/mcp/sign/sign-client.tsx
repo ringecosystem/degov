@@ -6,7 +6,11 @@ import { useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 
 import { abi as GovernorAbi } from "@/config/abi/governor";
+import useCancelProposal from "@/hooks/useCancelProposal";
 import useCastVote from "@/hooks/useCastVote";
+import { useDelegate } from "@/hooks/useDelegate";
+import useExecuteProposal from "@/hooks/useExecute";
+import useQueueProposal from "@/hooks/useQueue";
 import { degovRestApi } from "@/utils/remote-api";
 
 const safeExecAbi = [
@@ -58,6 +62,10 @@ export function McpSignClient() {
   const requestId = params.get("request") ?? "";
   const { address, isConnected } = useAccount();
   const { castVote, isPending } = useCastVote();
+  const { queueProposal } = useQueueProposal();
+  const { executeProposal } = useExecuteProposal();
+  const { cancelProposal } = useCancelProposal();
+  const { delegate } = useDelegate();
   const { writeContractAsync } = useWriteContract();
   const [request, setRequest] = useState<SignatureRequest | null>(null);
   const [message, setMessage] = useState("");
@@ -88,8 +96,20 @@ export function McpSignClient() {
     if (!api) return;
     try {
       const chainId = Number(request.chain);
+      const action = {
+        targets: (request.targets ?? []) as `0x${string}`[],
+        values: (request.values ?? []).map((value) => BigInt(value)),
+        calldatas: (request.calldatas ?? []) as `0x${string}`[],
+        description: request.description ?? "",
+        governor: request.contract as `0x${string}`,
+        chainId,
+      };
       if (
         request.type !== "vote" &&
+        request.type !== "queue" &&
+        request.type !== "execute" &&
+        request.type !== "cancel" &&
+        request.type !== "delegate" &&
         request.function !== "propose" &&
         request.function !== "execTransaction"
       ) {
@@ -105,6 +125,17 @@ export function McpSignClient() {
               governor: request.contract as `0x${string}`,
               chainId,
             })
+          : request.type === "queue"
+            ? await queueProposal(action)
+            : request.type === "execute"
+              ? await executeProposal(action)
+              : request.type === "cancel"
+                ? await cancelProposal(action)
+                : request.type === "delegate"
+                  ? await delegate((request.args[0] ?? "0x0000000000000000000000000000000000000000") as `0x${string}`, {
+                      token: request.contract as `0x${string}`,
+                      chainId,
+                    })
           : request.function === "propose"
             ? await writeContractAsync({
                 address: request.contract as `0x${string}`,

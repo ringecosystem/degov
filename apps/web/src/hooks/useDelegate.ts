@@ -13,11 +13,23 @@ export const useDelegate = () => {
   const { writeContractAsync, isPending } = useWriteContract();
   const { validateBeforeExecution } = useContractGuard();
   const delegate = useCallback(
-    async (delegatee: Address) => {
-      const isValid = validateBeforeExecution();
-      if (!isValid) return;
+    async (
+      delegatee: Address,
+      options?: { token?: `0x${string}`; chainId?: number }
+    ) => {
+      const token =
+        options?.token ??
+        (daoConfig?.contracts?.governorToken?.address as `0x${string}` | undefined);
+      if (!token) {
+        throw new Error("Governor token not found");
+      }
+      if (!(options?.token && options.chainId)) {
+        const isValid = validateBeforeExecution();
+        if (!isValid) return;
+      }
       const hash = await writeContractAsync({
-        address: daoConfig?.contracts?.governorToken?.address as `0x${string}`,
+        address: token,
+        chainId: options?.chainId,
         abi: tokenAbi,
         functionName: "delegate",
         args: [delegatee],

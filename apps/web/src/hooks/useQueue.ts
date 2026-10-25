@@ -17,20 +17,29 @@ const useQueueProposal = () => {
       values,
       calldatas,
       description,
+      governor,
+      chainId,
     }: {
       targets: `0x${string}`[];
       values: bigint[];
       calldatas: `0x${string}`[];
       description: string;
+      governor?: `0x${string}`;
+      chainId?: number;
     }) => {
-      if (!daoConfig?.contracts?.governor) {
+      const contract =
+        governor ?? (daoConfig?.contracts?.governor as `0x${string}` | undefined);
+      if (!contract) {
         throw new Error("Governor contract not found");
       }
-      const isValid = validateBeforeExecution();
-      if (!isValid) return;
+      if (!(governor && chainId)) {
+        const isValid = validateBeforeExecution();
+        if (!isValid) return;
+      }
 
       return await writeContractAsync({
-        address: daoConfig.contracts.governor as `0x${string}`,
+        address: contract,
+        chainId,
         abi: GovernorAbi,
         functionName: "queue",
         args: [
