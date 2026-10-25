@@ -5,8 +5,30 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 
+import { abi as GovernorAbi } from "@/config/abi/governor";
 import useCastVote from "@/hooks/useCastVote";
 import { degovRestApi } from "@/utils/remote-api";
+
+const safeExecAbi = [
+  {
+    type: "function",
+    name: "execTransaction",
+    stateMutability: "payable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+      { name: "operation", type: "uint8" },
+      { name: "safeTxGas", type: "uint256" },
+      { name: "baseGas", type: "uint256" },
+      { name: "gasPrice", type: "uint256" },
+      { name: "gasToken", type: "address" },
+      { name: "refundReceiver", type: "address" },
+      { name: "signatures", type: "bytes" },
+    ],
+    outputs: [{ name: "success", type: "bool" }],
+  },
+] as const;
 
 type SignatureRequest = {
   id: string;
@@ -22,6 +44,10 @@ type SignatureRequest = {
   target?: string;
   amount?: string;
   calldata?: string;
+  targets?: string[];
+  values?: string[];
+  calldatas?: string[];
+  description?: string;
   used: boolean;
   txHash?: string;
   failure?: string;
@@ -61,30 +87,56 @@ export function McpSignClient() {
     const api = degovRestApi();
     if (!api) return;
     try {
+      const chainId = Number(request.chain);
+      if (
+        request.type !== "vote" &&
+        request.function !== "propose" &&
+        request.function !== "execTransaction"
+      ) {
+        setMessage("unsupported_function");
+        return;
+      }
       const hash =
         request.type === "vote"
           ? await castVote({
               proposalId: BigInt(request.args[0] ?? "0"),
               support: Number(request.args[1] ?? "0"),
               reason: request.args[2] ?? "",
+              governor: request.contract as `0x${string}`,
+              chainId,
             })
-          : await writeContractAsync({
-              address: request.contract as `0x${string}`,
-              abi: [
-                {
-                  type: "function",
-                  name: request.function,
-                  stateMutability: "payable",
-                  inputs: request.args.map((_, index) => ({
-                    name: `arg${index}`,
-                    type: "string",
-                  })),
-                  outputs: [],
-                },
-              ],
-              functionName: request.function,
-              args: request.args,
-            });
+          : request.function === "propose"
+            ? await writeContractAsync({
+                address: request.contract as `0x${string}`,
+                abi: GovernorAbi,
+                functionName: "propose",
+                chainId,
+                args: [
+                  (request.targets ?? []) as `0x${string}`[],
+                  (request.values ?? []).map((value) => BigInt(value)),
+                  (request.calldatas ?? []) as `0x${string}`[],
+                  request.description ?? "",
+                ],
+              })
+            : await writeContractAsync({
+                address: request.contract as `0x${string}`,
+                abi: safeExecAbi,
+                functionName: "execTransaction",
+                chainId,
+                args: [
+                  (request.target ?? "0x0000000000000000000000000000000000000000") as `0x${string}`,
+                  BigInt(request.amount || "0"),
+                  (request.calldata ?? "0x") as `0x${string}`,
+                  0,
+                  BigInt(0),
+                  BigInt(0),
+                  BigInt(0),
+                  "0x0000000000000000000000000000000000000000",
+                  "0x0000000000000000000000000000000000000000",
+                  "0x",
+                ],
+              });
+      if (!hash) return;
       await fetch(`${api}/mcp/signature-requests/${request.id}/result`, {
         method: "POST",
         headers: { "content-type": "application/json" },

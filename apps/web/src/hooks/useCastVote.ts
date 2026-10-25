@@ -15,18 +15,25 @@ const useCastVote = () => {
       proposalId,
       support,
       reason,
+      governor,
+      chainId,
     }: {
       proposalId: bigint;
       support: number;
       reason: string;
+      governor?: `0x${string}`;
+      chainId?: number;
     }) => {
-      if (!daoConfig?.contracts?.governor) {
+      const contract =
+        governor ?? (daoConfig?.contracts?.governor as `0x${string}` | undefined);
+      if (!contract) {
         throw new Error("Governor contract not found");
       }
       const isValid = validateBeforeExecution();
       if (!isValid) return;
       return await writeContractAsync({
-        address: daoConfig.contracts.governor as `0x${string}`,
+        address: contract,
+        chainId,
         abi: GovernorAbi,
         functionName: "castVoteWithReason",
         args: [proposalId, support, reason],
