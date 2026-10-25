@@ -119,7 +119,7 @@ export function McpSignClient() {
                 ],
               })
             : await writeContractAsync({
-                address: request.contract as `0x${string}`,
+                address: (request.safe || request.contract) as `0x${string}`,
                 abi: safeExecAbi,
                 functionName: "execTransaction",
                 chainId,
