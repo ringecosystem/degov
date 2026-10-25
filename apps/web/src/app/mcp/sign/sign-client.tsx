@@ -113,10 +113,10 @@ export function McpSignClient() {
           <p>Chain {request.chain}</p>
           <p>Contract {request.contract}</p>
           <p>Function {request.function}</p>
-          {request.safe ? <p>Safe {request.safe}</p> : null}
-          {request.target ? <p>Target {request.target}</p> : null}
-          {request.amount ? <p>Amount {request.amount}</p> : null}
-          {request.calldata ? <p>Calldata {request.calldata}</p> : null}
+          <p>Safe {request.safe ?? ""}</p>
+          <p>Target {request.target ?? ""}</p>
+          <p>Amount {request.amount ?? ""}</p>
+          <p>Calldata {request.calldata ?? ""}</p>
           <button
             type="button"
             className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
