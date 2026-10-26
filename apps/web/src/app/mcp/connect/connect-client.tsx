@@ -20,6 +20,11 @@ export function McpConnectClient() {
       setMessage("Open this page from the wallet link URL.");
       return;
     }
+    if (!/^[A-Za-z0-9]{8,}$/.test(state)) {
+      setMessage("This link state cannot be used as a SIWE nonce.");
+      return;
+    }
+    try {
     const siwe = createSiweMessage({
       address,
       chainId: chainId ?? 1,
@@ -46,6 +51,9 @@ export function McpConnectClient() {
       return;
     }
     setMessage("Wallet linked. Return to the conversation.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The wallet did not finish signing.");
+    }
   }
 
   return (
