@@ -16,7 +16,9 @@ export function ConditionalLayout({
   const pathname = usePathname();
 
   // Check if current path is a standalone route (AI analysis)
-  const isStandalonePage = pathname?.startsWith("/ai-analysis") ?? false;
+  const isStandalonePage =
+    (pathname?.startsWith("/ai-analysis") ?? false) ||
+    (pathname?.startsWith("/mcp/") ?? false);
 
   if (isStandalonePage) {
     // Standalone layout - no sidebar, header, etc.
