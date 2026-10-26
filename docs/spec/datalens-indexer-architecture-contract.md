@@ -72,7 +72,7 @@ Do not hardcode the token in code, issue text, logs, committed config, examples,
 or docs.
 
 The operational reference for the live token is the GitOps-managed Datalens
-credentials secret for the `helixbox-nue` environment. Use the `degov-live`
+credentials secret for the `helixbox` environment. Use the `degov-live`
 application token entry from that secret as the deployment reference. The DeGov
 repository should only refer to the secret name, application token entry, and
 environment variable names, not the secret value.
