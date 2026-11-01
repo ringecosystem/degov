@@ -74,7 +74,7 @@
     "postgres": "^3.4.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-dropzone": "^14.3.5",
+    "react-dropzone": "^20.1.4",
     "react-hook-form": "^7.61.0",
     "react-toastify": "^11.0.3",
     "react-use": "^17.6.0",
