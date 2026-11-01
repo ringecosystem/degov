@@ -46,7 +46,7 @@
     "@tiptap/extension-underline": "^3.30.5",
     "@tiptap/pm": "^3.30.5",
     "@tiptap/react": "^3.30.5",
-    "@tiptap/starter-kit": "^3.30.5",
+    "@tiptap/starter-kit": "^3.32.1",
     "@types/lodash-es": "^4.17.12",
     "@wagmi/core": "^2.16.5",
     "bignumber.js": "^11.1.4",
