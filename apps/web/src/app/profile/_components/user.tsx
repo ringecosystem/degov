@@ -161,8 +161,8 @@ export const User = ({
         isLoadingTokenBalance={isLoadingTokenBalance}
         delegationStatusText={delegationStatusText}
         isDelegateMappingsLoading={isDelegateMappingsLoading}
+        tokenManagement={tokenManagement}
       />
-      {tokenManagement}
     </div>
   );
 };

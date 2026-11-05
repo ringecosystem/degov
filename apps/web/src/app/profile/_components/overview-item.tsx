@@ -6,12 +6,14 @@ interface OverviewItemProps {
   value?: React.ReactNode;
   isLoading?: boolean;
   link?: string;
+  footer?: React.ReactNode;
 }
 export const OverviewItem = ({
   title,
   value,
   isLoading,
   link,
+  footer,
 }: OverviewItemProps) => {
   return link ? (
     <Link
@@ -28,6 +30,7 @@ export const OverviewItem = ({
           {value || ""}
         </div>
       )}
+      {footer}
     </Link>
   ) : (
     <div className="p-[10px] flex flex-row justify-between lg:flex-col gap-[8px] lg:gap-[10px] rounded-[14px] bg-card-background">
@@ -41,6 +44,7 @@ export const OverviewItem = ({
           {value || ""}
         </div>
       )}
+      {footer}
     </div>
   );
 };
