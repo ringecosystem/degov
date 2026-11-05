@@ -74,17 +74,14 @@ export function TokenManagement({ config }: { config: Config }) {
 
   return (
     <>
-      <div className="flex flex-col gap-3 border-t border-border/20 pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 text-sm tabular-nums">
-          <p className="font-medium">{t("title")}</p>
-          {values ? (
-            <p className="break-words text-muted-foreground">
-              {display(values.underlyingBalance)} {values.underlyingSymbol} · {display(values.balance)} {values.symbol}
-            </p>
-          ) : <p className="text-muted-foreground">{t(wrapper.unavailable ? "unavailable" : "loading")}</p>}
-        </div>
-        <Button variant="outline" className="rounded-full" onClick={() => changeOpen(true)}>{t("manage")}</Button>
-      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-auto w-max justify-start p-0 text-xs font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground hover:underline"
+        onClick={() => changeOpen(true)}
+      >
+        {t("manage")}
+      </Button>
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[14px] border-border/20 bg-card p-5">
           <DialogHeader className="flex-row items-start justify-between gap-3 space-y-0 text-left">
