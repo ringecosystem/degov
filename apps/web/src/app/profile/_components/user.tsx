@@ -28,6 +28,7 @@ interface UserProps {
   delegationStatusText?: React.ReactNode;
   onEditProfile: () => void;
   onDelegate: () => void;
+  tokenManagement?: React.ReactNode;
 }
 
 export const User = ({
@@ -42,6 +43,7 @@ export const User = ({
   delegationStatusText,
   onEditProfile,
   onDelegate,
+  tokenManagement,
 }: UserProps) => {
   const t = useTranslations("profile.user");
   const daoConfig = useDaoConfig();
@@ -160,6 +162,7 @@ export const User = ({
         delegationStatusText={delegationStatusText}
         isDelegateMappingsLoading={isDelegateMappingsLoading}
       />
+      {tokenManagement}
     </div>
   );
 };

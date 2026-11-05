@@ -40,6 +40,10 @@ interface Wallet {
 interface GovernorToken {
   address: string;
   standard: string;
+  wrapper?: {
+    type: "erc20-wrapper";
+    underlyingToken: string;
+  };
 }
 
 interface Contracts {
