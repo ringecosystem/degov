@@ -32,7 +32,7 @@ jobs:
           cat > vercel.json <<'EOF'
           {
             "installCommand": "pnpm install --no-frozen-lockfile",
-            "buildCommand": "pnpm build:vercel"
+            "buildCommand": "pnpm build"
           }
           EOF
 
@@ -43,11 +43,11 @@ jobs:
           vercel_token: ${{ secrets.VERCEL_TOKEN }}
           vercel_group: itering
           preview_output: true
-          alias_domain: "degov-dev"
+          alias_domain: "degov-kton-wrapper-testnet"
           project_name: "degov"
           script_run: false
           dist_path: .
-          enable_notify_comment: true
+          enable_notify_comment: false
           enable_notify_slack: false
           slack_channel: public-degov
           slack_webhook: ${{ secrets.SLACK_INCOMING_WEBHOOK_URL }}
