@@ -99,7 +99,12 @@ export function useTokenWrapper(dao: Config) {
           if (request.functionName === "delegate") await client.simulateContract(request);
           else await client.simulateContract(request);
         },
-        write: () => writeContractAsync({ ...request, chainId: wrapper.chainId }),
+        write: () => {
+          if (request.functionName === "delegate") {
+            return writeContractAsync({ ...request, chainId: wrapper.chainId });
+          }
+          return writeContractAsync({ ...request, chainId: wrapper.chainId });
+        },
         wait: (tx, onReplaced) => client.waitForTransactionReceipt({ hash: tx, onReplaced }),
         onSubmitted: (tx) => {
           if (mounted.current) { setHash(tx); setPhase("confirming"); }
