@@ -24,6 +24,7 @@ interface OverviewProps {
   delegationStatusText?: React.ReactNode;
   isDelegateMappingsLoading?: boolean;
   isOwnProfile?: boolean;
+  tokenManagement?: React.ReactNode;
 }
 
 interface OverviewCardData {
@@ -31,6 +32,7 @@ interface OverviewCardData {
   value?: React.ReactNode;
   isLoading?: boolean;
   link?: string;
+  footer?: React.ReactNode;
 }
 export const Overview = ({
   address,
@@ -38,6 +40,7 @@ export const Overview = ({
   isLoadingTokenBalance,
   delegationStatusText,
   isDelegateMappingsLoading,
+  tokenManagement,
 }: OverviewProps) => {
   const t = useTranslations("profile.overview");
   const { formattedVotes, votes, isLoading } = useAddressVotes(address);
@@ -129,6 +132,7 @@ export const Overview = ({
         title: t("cards.governanceBalance"),
         value: tokenBalance,
         isLoading: isLoadingTokenBalance,
+        footer: tokenManagement,
       },
       {
         title: t("cards.delegatingTo"),
@@ -151,6 +155,7 @@ export const Overview = ({
     isDelegateMappingsLoading,
     participationValue,
     isParticipationLoading,
+    tokenManagement,
     t,
   ]);
   return (
@@ -162,6 +167,7 @@ export const Overview = ({
           value={item.value}
           isLoading={item.isLoading}
           link={item.link}
+          footer={item.footer}
         />
       ))}
     </div>

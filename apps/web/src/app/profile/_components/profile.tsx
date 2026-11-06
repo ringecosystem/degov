@@ -18,11 +18,13 @@ import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceToken
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { Link, useRouter } from "@/i18n/navigation";
+import { getTokenWrapper } from "@/lib/token-wrapper";
 import { buildGovernanceScope, delegateService } from "@/services/graphql";
 
 import { JoinDelegate } from "./join-delegate";
 import { ReceivedDelegations } from "./received-delegations";
 import { ProfileSkeleton } from "./skeleton";
+import { TokenManagement } from "./token-management";
 import { User } from "./user";
 
 const SystemInfo = dynamic(
@@ -305,6 +307,12 @@ export const Profile = ({ address, isDelegate }: ProfileProps) => {
             isLoadingTokenBalance={isLoadingTokenBalance}
             delegationStatusText={delegationStatusText}
             isDelegateMappingsLoading={isDelegateMappingsLoading}
+            tokenManagement={isOwnProfile && daoConfig && getTokenWrapper(daoConfig) ? (
+              <TokenManagement
+                key={`${daoConfig.code}:${account}:${daoConfig.chain.id}:${daoConfig.contracts.governorToken.address}:${daoConfig.contracts.governorToken.wrapper?.underlyingToken}`}
+                config={daoConfig}
+              />
+            ) : undefined}
           />
           <ReceivedDelegations address={address} />
         </div>

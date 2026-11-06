@@ -1,9 +1,10 @@
 import { ChevronDown, Power } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatUnits } from "viem";
 import { useReadContract } from "wagmi";
 
+import { TokenManagement } from "@/app/profile/_components/token-management";
 import { ExternalLinkIcon, ProfileIcon } from "@/components/icons";
 import {
   DropdownMenu,
@@ -17,6 +18,7 @@ import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceToken
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
 import { Link } from "@/i18n/navigation";
+import { getTokenWrapper, type readWrapperValues } from "@/lib/token-wrapper";
 import { formatShortAddress } from "@/utils";
 
 import { AddressAvatar } from "../address-avatar";
@@ -34,6 +36,9 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   const { disconnectWallet } = useDisconnectWallet();
   const daoConfig = useDaoConfig();
   const t = useTranslations("common.connect");
+  const tokenTranslations = useTranslations("profile.tokenManagement");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapper = daoConfig ? getTokenWrapper(daoConfig) : undefined;
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
     useGovernanceToken();
@@ -117,8 +122,24 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   const handleDisconnect = useCallback(() => {
     disconnectWallet(address);
   }, [disconnectWallet, address]);
-  return (
-    <DropdownMenu>
+  const votingPowerRow = (
+    <div className="flex items-center justify-between text-[12px] text-foreground/80">
+      <span className="font-normal">{t("votingPower")}</span>
+      {isVotingPowerSectionLoading ? (
+        <Skeleton className="h-[16px] w-[120px] bg-border/20" />
+      ) : (
+        <span className="font-semibold text-foreground">
+          {formattedVotingPower ?? "--"}
+          {formattedVotingPowerPercentage
+            ? ` (${formattedVotingPowerPercentage}%)`
+            : ""}
+        </span>
+      )}
+    </div>
+  );
+
+  const renderMenu = (openTokens?: () => void, wrapperValues?: ReturnType<typeof readWrapperValues>, unavailable = false) => (
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger className=" focus-visible:outline-hidden">
         <AddressResolver address={address} showShortAddress>
           {(value) => (
@@ -162,32 +183,47 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
           </Link>
         </div>
         <div className="rounded-[14px] border border-border/20 bg-bg-2 p-[10px] shadow-card">
-          <div className="flex items-center justify-between text-[12px] text-foreground/80">
-            <span className="font-normal">{t("votingPower")}</span>
-            {isVotingPowerSectionLoading ? (
-              <Skeleton className="h-[16px] w-[120px] bg-border/20" />
-            ) : (
-              <span className="font-semibold text-foreground">
-                {formattedVotingPower ?? "--"}
-                {formattedVotingPowerPercentage
-                  ? ` (${formattedVotingPowerPercentage}%)`
-                  : ""}
-              </span>
-            )}
-          </div>
-          <div className="my-[10px] h-px bg-border/20" />
-          <div className="flex items-center justify-between text-[12px] text-foreground/80">
-            <span className="font-normal">{t("balance")}</span>
-            {isBalanceSectionLoading ? (
-              <Skeleton className="h-[16px] w-[140px] bg-border/20" />
-            ) : (
-              <span className="font-semibold text-foreground">
-                {formattedBalance ?? "--"}
-                {governanceToken?.symbol ? ` ${governanceToken.symbol}` : ""}
-              </span>
-            )}
-          </div>
+          {wrapper ? (
+            <>
+              {[{ symbol: wrapperValues?.underlyingSymbol, balance: wrapperValues?.underlyingBalance }, { symbol: wrapperValues?.symbol, balance: wrapperValues?.balance }].map((token, index) => (
+                <div key={index} className={`flex items-center justify-between gap-3 text-[12px] ${index ? "border-t border-border/20 mt-[10px] pt-[10px]" : ""}`}>
+                  <span className="font-normal">{token.symbol ?? tokenTranslations(index === 0 ? "underlyingToken" : "wrappedToken")}</span>
+                  {wrapperValues && token.balance !== undefined ? (
+                    <span className="min-w-0 break-all text-right font-semibold tabular-nums">{formatUnits(token.balance, wrapperValues.decimals)}</span>
+                  ) : unavailable ? <span>—</span> : <Skeleton className="h-[16px] w-[100px] bg-border/20" />}
+                </div>
+              ))}
+              <div className="my-[10px] h-px bg-border/20" />
+              {votingPowerRow}
+
+              {unavailable && <p role="status" className="mt-2 text-xs text-muted-foreground">{tokenTranslations("unavailable")}</p>}
+            </>
+          ) : (
+            <>
+              {votingPowerRow}
+              <div className="my-[10px] h-px bg-border/20" />
+              <div className="flex items-center justify-between text-[12px] text-foreground/80">
+                <span className="font-normal">{t("balance")}</span>
+                {isBalanceSectionLoading ? (
+                  <Skeleton className="h-[16px] w-[140px] bg-border/20" />
+                ) : (
+                  <span className="font-semibold text-foreground">
+                    {formattedBalance ?? "--"}
+                    {governanceToken?.symbol ? ` ${governanceToken.symbol}` : ""}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
+        {wrapper && (
+          <Button
+            className="w-full rounded-full"
+            onClick={() => { setMenuOpen(false); openTokens?.(); }}
+          >
+            {tokenTranslations("title")}
+          </Button>
+        )}
         <div className="flex items-center justify-center gap-[10px]">
           <Button
             asChild
@@ -215,4 +251,12 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+
+  return daoConfig && wrapper ? (
+      <TokenManagement
+        key={`${address}:${daoConfig.chain.id}:${wrapper.address}:${wrapper.underlying}`}
+        config={daoConfig}
+        renderTrigger={renderMenu}
+      />
+  ) : renderMenu();
 };
