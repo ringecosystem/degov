@@ -1,7 +1,8 @@
 "use client";
 
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { ArrowDown, Check, X } from "lucide-react";
+import { ArrowDown, Check, Coins, Globe2, Info, LoaderCircle, X } from "lucide-react";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { formatEther, formatUnits, isAddress, zeroAddress } from "viem";
@@ -14,6 +15,8 @@ import { useTokenWrapper } from "@/hooks/useTokenWrapper";
 import { Link } from "@/i18n/navigation";
 import { parseWrapperAmount, wrapperAction } from "@/lib/token-wrapper";
 import type { Config } from "@/types/config";
+
+import styles from "./token-management.module.css";
 
 import type { Address } from "viem";
 
@@ -63,7 +66,7 @@ export function TokenManagement({ config, renderTrigger }: TokenManagementProps)
   const changeOpen = (next: boolean) => {
     if (busy) return;
     setOpen(next);
-    if (next) { clear(); setInput(""); setDelegatee(""); setNetworkError(""); }
+    if (next) { setMode("wrap"); clear(); setInput(""); setDelegatee(""); setNetworkError(""); }
   };
 
   const primary = async () => {
@@ -88,68 +91,110 @@ export function TokenManagement({ config, renderTrigger }: TokenManagementProps)
         {t("manage")}
       </Button>}
       <Dialog open={open} onOpenChange={changeOpen}>
-        <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[14px] border-border/20 bg-card p-5">
-          <DialogHeader className="flex-row items-start justify-between gap-3 space-y-0 text-left">
-            <div className="space-y-2">
-              <DialogTitle>{t(success ? "complete" : "title")}</DialogTitle>
-              <DialogDescription>{t("description")}</DialogDescription>
+        <DialogContent className={styles.dialog} overlayClassName="bg-black/25 backdrop-blur-sm">
+          <DialogHeader className={styles.header}>
+            <div>
+              <DialogTitle className={styles.title}>{t(success ? completed === "wrap" ? "wrapComplete" : completed === "unwrap" ? "unwrapComplete" : "complete" : "title")}</DialogTitle>
+              <DialogDescription className={styles.description}>{t("description")}</DialogDescription>
             </div>
-            <Button variant="ghost" size="icon" aria-label={t("close")} disabled={busy} onClick={() => changeOpen(false)}><X /></Button>
+            <Button variant="ghost" size="icon" className={styles.close} aria-label={t("close")} disabled={busy} onClick={() => changeOpen(false)}><X size={22} /></Button>
           </DialogHeader>
           {wrapper.unavailable ? (
-            <div className="space-y-3">
-              <p role="alert" className="text-sm">{t("unavailable")}</p>
+            <div className={styles.state}>
+              <p role="alert">{t("unavailable")}</p>
               <Button variant="outline" onClick={() => void wrapper.refresh()}>{t("retry")}</Button>
             </div>
-          ) : !values ? <p role="status">{t("loading")}</p> : success ? (
-            <div className="space-y-4">
-              <Check className="size-8 text-primary" aria-hidden="true" />
-              <p role="status">{t(completed === "wrap" ? "wrapped" : completed === "unwrap" ? "unwrapped" : "delegated")}</p>
-              <p className="text-sm tabular-nums">{display(values.underlyingBalance)} {values.underlyingSymbol} · {display(values.balance)} {values.symbol}</p>
+          ) : !values ? <p role="status" className={styles.state}>{t("loading")}</p> : busy ? (
+            <div className={styles.state} role="status">
+              <LoaderCircle className="size-10 animate-spin" aria-hidden="true" />
+              <h3 className={styles.stateTitle}>{t(phase)}</h3>
+              <p className={styles.description}>{t(phase === "signing" ? "walletHint" : "confirmingHint")}</p>
+            </div>
+          ) : success ? (
+            <div className={styles.success}>
+              <div className={styles.successIcon}><Check size={30} aria-hidden="true" /></div>
+              <h3 className={styles.stateTitle}>{completed === "delegate" ? t("delegated") : t(completed === "wrap" ? "wrappedTitle" : "unwrappedTitle", { symbol: completed === "wrap" ? values.symbol : values.underlyingSymbol })}</h3>
+              <p role="status" className="sr-only">{t(completed === "wrap" ? "wrapped" : completed === "unwrap" ? "unwrapped" : "delegated")}</p>
+              {completed !== "delegate" && <div className={styles.resultAmount}><TokenBadge symbol={completed === "wrap" ? values.symbol : values.underlyingSymbol} wrapped={completed === "wrap"} />{input}</div>}
+              <dl className={styles.balances}>
+                <div><dt>{t("tokenBalance", { symbol: values.underlyingSymbol })}</dt><dd>{display(values.underlyingBalance)} {values.underlyingSymbol}</dd></div>
+                <div><dt>{t("tokenBalance", { symbol: values.symbol })}</dt><dd>{display(values.balance)} {values.symbol}</dd></div>
+              </dl>
               {completed === "wrap" && values.delegate.toLowerCase() === zeroAddress ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">{t("delegationHint")}</p>
-                  <Button className="w-full rounded-full" disabled={busy || !correctChain} onClick={() => void wrapper.execute("delegate", 0n, account)}>{t("voteMyself")}</Button>
-                  <label htmlFor="wrapper-delegate" className="block text-sm">{t("delegateAddress")}</label>
-                  <Input id="wrapper-delegate" value={delegatee} disabled={busy} onChange={(event) => setDelegatee(event.target.value)} placeholder="0x…" autoComplete="off" />
-                  <Button variant="outline" className="w-full rounded-full" disabled={busy || !correctChain || !isAddress(delegatee) || delegatee.toLowerCase() === zeroAddress} onClick={() => void wrapper.execute("delegate", 0n, delegatee as Address)}>{t("delegate")}</Button>
-                  <Link href="/delegates" className="block text-sm underline underline-offset-4" onClick={(event) => { if (busy) event.preventDefault(); }}>{t("browseDelegates")}</Link>
+                <div className={styles.participation}>
+                  <h4>{t("chooseParticipation")}</h4>
+                  <p>{t("delegationHint")}</p>
+                  <Button className="w-full rounded-full" disabled={!correctChain} onClick={() => void wrapper.execute("delegate", 0n, account)}>{t("voteMyself")}</Button>
+                  <label htmlFor="wrapper-delegate">{t("delegateAddress")}</label>
+                  <Input id="wrapper-delegate" value={delegatee} onChange={(event) => setDelegatee(event.target.value)} placeholder="0x…" autoComplete="off" />
+                  <Button variant="outline" className="w-full rounded-full" disabled={!correctChain || !isAddress(delegatee) || delegatee.toLowerCase() === zeroAddress} onClick={() => void wrapper.execute("delegate", 0n, delegatee as Address)}>{t("delegate")}</Button>
+                  <Link href="/delegates" className="underline underline-offset-4">{t("browseDelegates")}</Link>
                 </div>
-              ) : completed === "wrap" ? <p className="break-all text-sm text-muted-foreground">{t("existingDelegate", { address: values.delegate })}</p> : null}
-              <p className="text-sm text-muted-foreground">{t("snapshot")}</p>
-              <Button variant="ghost" className="w-full" disabled={busy} onClick={() => changeOpen(false)}>{t("back")}</Button>
+              ) : completed === "wrap" ? <p className={styles.explanation}>{t("existingDelegate", { address: values.delegate })}</p> : null}
+              <p className={styles.explanation}>{t("snapshot")}</p>
+              <Button className={styles.primary} onClick={() => changeOpen(false)}>{t("back")}</Button>
+              <Button variant="ghost" className="w-full" onClick={() => { clear(); setInput(""); }}>{t("manageMore")}</Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div role="group" aria-label={t("operation")} className="flex gap-2">
-                {(["wrap", "unwrap"] as const).map((tab) => <Button key={tab} variant={mode === tab ? "default" : "outline"} aria-pressed={mode === tab} disabled={busy} className="flex-1 rounded-full" onClick={() => { setMode(tab); setInput(""); clear(); }}>{t(tab)}</Button>)}
+            <div className={styles.form}>
+              <div role="tablist" aria-label={t("operation")} className={styles.tabs}>
+                {(["wrap", "unwrap"] as const).map((tab) => <button
+                  key={tab} id={`wrapper-tab-${tab}`} role="tab" type="button" aria-selected={mode === tab} aria-controls="wrapper-operation" tabIndex={mode === tab ? 0 : -1}
+                  onClick={() => { setMode(tab); setInput(""); clear(); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                      event.preventDefault();
+                      const next = tab === "wrap" ? "unwrap" : "wrap";
+                      setMode(next); setInput(""); clear();
+                      document.getElementById(`wrapper-tab-${next}`)?.focus();
+                    }
+                  }}
+                >{t(tab)}</button>)}
               </div>
-              <p className="text-sm text-muted-foreground">{config.chain.name}</p>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <label htmlFor="wrapper-amount">{t("pay", { symbol: fromSymbol ?? "" })}</label>
-                  <button type="button" className="underline underline-offset-4 disabled:opacity-50" disabled={busy || balance === undefined || balance === 0n} onClick={() => { if (balance !== undefined) { setInput(display(balance)); clear(); } }}>{t("max")}</button>
+              <div id="wrapper-operation" role="tabpanel" aria-labelledby={`wrapper-tab-${mode}`}>
+                <div className={styles.network}>
+                  <span><Globe2 size={16} aria-hidden="true" />{config.chain.name}</span>
+                  <span>1 {values.underlyingSymbol} = 1 {values.symbol}</span>
                 </div>
-                <Input id="wrapper-amount" inputMode="decimal" autoComplete="off" placeholder="0.00" value={input} disabled={busy} aria-describedby="wrapper-amount-help" aria-invalid={Boolean(input && (!amount || insufficient))} onChange={(event) => { setInput(event.target.value); clear(); }} />
-                <p className="break-words text-sm text-muted-foreground tabular-nums">{t("balance", { amount: display(balance ?? 0n), symbol: fromSymbol ?? "" })}</p>
-                <p id="wrapper-amount-help" role="status" className="text-sm text-destructive">{input && !amount ? t("invalidAmount", { decimals: values.decimals }) : insufficient ? t("insufficient", { symbol: fromSymbol ?? "" }) : null}</p>
+                {mode === "wrap" && <ol className={styles.steps} aria-label={t("wrapProgress")}>
+                  {(["approveStep", "wrap", "delegateStep"] as const).map((step, index) => {
+                    const approved = valid && action !== "approve";
+                    const done = index === 0 && approved || index === 2 && values.delegate.toLowerCase() !== zeroAddress;
+                    const active = index === (approved ? 1 : 0);
+                    return <li key={step} data-active={active} data-complete={done}><span>{done ? <Check size={12} /> : index + 1}</span>{t(step)}{index === 2 && <small>{t("optional")}</small>}</li>;
+                  })}
+                </ol>}
+                <div className={styles.amountBlock}>
+                  <div className={styles.amountLabel}>
+                    <label htmlFor="wrapper-amount">{t(mode === "wrap" ? "youWrap" : "youUnwrap")}</label>
+                    <span>{t("balance", { amount: display(balance ?? 0n), symbol: "" })}<button type="button" disabled={balance === undefined || balance === 0n} onClick={() => { if (balance !== undefined) { setInput(display(balance)); clear(); } }}>{t("max")}</button></span>
+                  </div>
+                  <div className={styles.amountRow}>
+                    <input id="wrapper-amount" inputMode="decimal" autoComplete="off" placeholder="0.00" value={input} aria-describedby="wrapper-amount-help" aria-invalid={Boolean(input && (!amount || insufficient))} onChange={(event) => { setInput(event.target.value); clear(); }} />
+                    <TokenBadge symbol={fromSymbol ?? ""} wrapped={mode === "unwrap"} />
+                  </div>
+                </div>
+                <div className={styles.exchange}><ArrowDown size={18} aria-hidden="true" /></div>
+                <div className={styles.receiveBlock}>
+                  <span>{t("youReceive")}</span>
+                  <div className={styles.amountRow}><strong>{amount ? display(amount) : "0.00"}</strong><TokenBadge symbol={toSymbol ?? ""} wrapped={mode === "wrap"} /></div>
+                </div>
+                <p id="wrapper-amount-help" role="status" className={styles.formError}>{input && !amount ? t("invalidAmount", { decimals: values.decimals }) : insufficient ? t("insufficient", { symbol: fromSymbol ?? "" }) : null}</p>
+                <dl className={styles.details}>
+                  <div><dt>{t("receivingAccount")}</dt><dd title={account}>{account ? `${account.slice(0, 6)}…${account.slice(-4)}` : "—"}</dd></div>
+                  <div><dt>{t("networkFee")}</dt><dd>{fee !== undefined ? t("networkFeeTransaction", { amount: formatEther(fee), symbol: config.chain.nativeToken.symbol }) : t("feeUnavailable")}</dd></div>
+                  <div><dt>{t(mode === "wrap" ? "transactionsWrap" : "transactionsUnwrap")}</dt><dd>{mode === "unwrap" ? t("oneTransaction") : !amount ? t("approveThenWrap") : action === "approve" ? t("twoTransactions") : t("oneTransaction")}</dd></div>
+                </dl>
+                <div className={styles.explanation}><Info size={15} aria-hidden="true" /><p>{t(mode === "unwrap" ? "unwrapHint" : values.delegate.toLowerCase() !== zeroAddress ? "wrapHint" : "participateHint")}</p></div>
+                <Button className={styles.primary} disabled={switching || (isConnected && correctChain && !valid)} onClick={() => void primary()}>
+                  {!isConnected ? t("connect") : !correctChain ? t("switchNetwork") : !input ? t("enterAmount") : t(action)}
+                </Button>
+                <p className={styles.footnote}>{t(mode === "wrap" ? "approvalFootnote" : "unwrapFootnote")}</p>
               </div>
-              <ArrowDown className="mx-auto size-5 text-muted-foreground" aria-hidden="true" />
-              <p className="break-words text-lg font-semibold tabular-nums">{t("receive", { amount: amount ? display(amount) : "0", symbol: toSymbol ?? "" })}</p>
-              <dl className="space-y-2 text-sm">
-                <div className="flex justify-between gap-3"><dt>{t("rate")}</dt><dd>1 {values.underlyingSymbol} = 1 {values.symbol}</dd></div>
-                <div className="flex flex-col gap-1"><dt className="text-muted-foreground">{t("recipient")}</dt><dd className="break-all">{account}</dd></div>
-                <div className="flex justify-between gap-3"><dt>{t("fee")}</dt><dd>{fee !== undefined ? `${formatEther(fee)} ${config.chain.nativeToken.symbol}` : t("feeUnavailable")}</dd></div>
-              </dl>
-              <p className="text-sm text-muted-foreground">{t(mode === "unwrap" ? "unwrapHint" : action === "approve" ? "approveHint" : "wrapHint")}</p>
-              <Button className="w-full rounded-full" disabled={busy || switching || (isConnected && correctChain && !valid)} onClick={() => void primary()}>
-                {busy ? t(phase) : !isConnected ? t("connect") : !correctChain ? t("switchNetwork") : t(action)}
-              </Button>
             </div>
           )}
-          <div className="space-y-2 text-sm" aria-live="polite">
-            {busy && <p role="status">{t(phase)}</p>}
-            {completed === "approve" && <p role="status">{t("approved")}</p>}
+          <div className={styles.feedback} aria-live="polite">
+            {!busy && completed === "approve" && <p role="status">{t("approved")}</p>}
             {(error || networkError) && <p role="alert" className="break-words text-destructive">{error || networkError}</p>}
             {hash && explorer && <a className="underline underline-offset-4" href={`${explorer}/tx/${hash}`} target="_blank" rel="noreferrer">{t("viewTransaction")}</a>}
           </div>
@@ -157,4 +202,12 @@ export function TokenManagement({ config, renderTrigger }: TokenManagementProps)
       </Dialog>
     </>
   );
+}
+
+function TokenBadge({ symbol, wrapped }: { symbol: string; wrapped: boolean }) {
+  const isKton = symbol === "KTON" || symbol === "gKTON";
+  return <span className={styles.tokenBadge}><span className={styles.tokenIcon}>
+    {isKton ? <Image src="/tokens/kton.png" alt="" width={28} height={28} /> : <Coins size={24} aria-hidden="true" />}
+    {wrapped && <small>{isKton ? "g" : "w"}</small>}
+  </span>{symbol}</span>;
 }
