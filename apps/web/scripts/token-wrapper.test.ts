@@ -59,6 +59,15 @@ test("readback verifies both token relationships and decimals, preserving voting
   }
 });
 
+test("wrapper metadata and both balances are independent of token names and support six decimals", () => {
+  const values = readWrapperValues([underlying, token, "ASSET", "vASSET", 6, 6, 1234567n, 7654321n, 0n, zeroAddress, 0n], getTokenWrapper(config))!;
+  assert.equal(values.underlyingSymbol, "ASSET");
+  assert.equal(values.symbol, "vASSET");
+  assert.equal(values.decimals, 6);
+  assert.equal(values.underlyingBalance, 1234567n);
+  assert.equal(values.balance, 7654321n);
+});
+
 const hash = `0x${"1".repeat(64)}` as Hash;
 function transaction() {
   const events: string[] = [];
