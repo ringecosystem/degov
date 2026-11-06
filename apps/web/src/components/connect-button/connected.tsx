@@ -1,9 +1,10 @@
 import { ChevronDown, Power } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatUnits } from "viem";
 import { useReadContract } from "wagmi";
 
+import { TokenManagement } from "@/app/profile/_components/token-management";
 import { ExternalLinkIcon, ProfileIcon } from "@/components/icons";
 import {
   DropdownMenu,
@@ -17,6 +18,7 @@ import { useFormatGovernanceTokenAmount } from "@/hooks/useFormatGovernanceToken
 import { useGovernanceToken } from "@/hooks/useGovernanceToken";
 import { useCurrentVotingPower } from "@/hooks/useSmartGetVotes";
 import { Link } from "@/i18n/navigation";
+import { getTokenWrapper } from "@/lib/token-wrapper";
 import { formatShortAddress } from "@/utils";
 
 import { AddressAvatar } from "../address-avatar";
@@ -34,6 +36,9 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   const { disconnectWallet } = useDisconnectWallet();
   const daoConfig = useDaoConfig();
   const t = useTranslations("common.connect");
+  const tokenTranslations = useTranslations("profile.tokenManagement");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapper = daoConfig ? getTokenWrapper(daoConfig) : undefined;
   const formatTokenAmount = useFormatGovernanceTokenAmount();
   const { data: governanceToken, isLoading: isGovernanceTokenLoading } =
     useGovernanceToken();
@@ -117,8 +122,8 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
   const handleDisconnect = useCallback(() => {
     disconnectWallet(address);
   }, [disconnectWallet, address]);
-  return (
-    <DropdownMenu>
+  const renderMenu = (openTokens?: () => void) => (
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger className=" focus-visible:outline-hidden">
         <AddressResolver address={address} showShortAddress>
           {(value) => (
@@ -188,6 +193,14 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
             )}
           </div>
         </div>
+        {wrapper && (
+          <Button
+            className="w-full rounded-full"
+            onClick={() => { setMenuOpen(false); openTokens?.(); }}
+          >
+            {tokenTranslations("title")}
+          </Button>
+        )}
         <div className="flex items-center justify-center gap-[10px]">
           <Button
             asChild
@@ -215,4 +228,12 @@ export const Connected = ({ address, onMenuToggle }: ConnectedProps) => {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+
+  return daoConfig && wrapper ? (
+      <TokenManagement
+        key={`${address}:${daoConfig.chain.id}:${wrapper.address}:${wrapper.underlying}`}
+        config={daoConfig}
+        renderTrigger={renderMenu}
+      />
+  ) : renderMenu();
 };

@@ -17,7 +17,12 @@ import type { Config } from "@/types/config";
 
 import type { Address } from "viem";
 
-export function TokenManagement({ config }: { config: Config }) {
+interface TokenManagementProps {
+  config: Config;
+  renderTrigger?: (open: () => void) => React.ReactNode;
+}
+
+export function TokenManagement({ config, renderTrigger }: TokenManagementProps) {
   const t = useTranslations("profile.tokenManagement");
   const { address: account, chainId, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
@@ -74,14 +79,14 @@ export function TokenManagement({ config }: { config: Config }) {
 
   return (
     <>
-      <Button
+      {renderTrigger ? renderTrigger(() => changeOpen(true)) : <Button
         variant="ghost"
         size="sm"
         className="h-auto w-max justify-start p-0 text-xs font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground hover:underline"
         onClick={() => changeOpen(true)}
       >
         {t("manage")}
-      </Button>
+      </Button>}
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[14px] border-border/20 bg-card p-5">
           <DialogHeader className="flex-row items-start justify-between gap-3 space-y-0 text-left">
