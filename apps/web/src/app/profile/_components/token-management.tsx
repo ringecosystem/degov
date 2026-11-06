@@ -2,7 +2,6 @@
 
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { ArrowDown, Check, Coins, Globe2, Info, LoaderCircle, X } from "lucide-react";
-import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { formatEther, formatUnits, isAddress, zeroAddress } from "viem";
@@ -13,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { useTokenWrapper } from "@/hooks/useTokenWrapper";
 import { Link } from "@/i18n/navigation";
-import { parseWrapperAmount, wrapperAction } from "@/lib/token-wrapper";
+import { parseWrapperAmount, type readWrapperValues, wrapperAction } from "@/lib/token-wrapper";
 import type { Config } from "@/types/config";
 
 import styles from "./token-management.module.css";
@@ -22,7 +21,7 @@ import type { Address } from "viem";
 
 interface TokenManagementProps {
   config: Config;
-  renderTrigger?: (open: () => void) => React.ReactNode;
+  renderTrigger?: (open: () => void, values: ReturnType<typeof readWrapperValues>, unavailable: boolean) => React.ReactNode;
 }
 
 export function TokenManagement({ config, renderTrigger }: TokenManagementProps) {
@@ -82,7 +81,7 @@ export function TokenManagement({ config, renderTrigger }: TokenManagementProps)
 
   return (
     <>
-      {renderTrigger ? renderTrigger(() => changeOpen(true)) : <Button
+      {renderTrigger ? renderTrigger(() => changeOpen(true), values, wrapper.unavailable) : <Button
         variant="ghost"
         size="sm"
         className="h-auto w-max justify-start p-0 text-xs font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground hover:underline"
@@ -205,9 +204,8 @@ export function TokenManagement({ config, renderTrigger }: TokenManagementProps)
 }
 
 function TokenBadge({ symbol, wrapped }: { symbol: string; wrapped: boolean }) {
-  const isKton = symbol === "KTON" || symbol === "gKTON";
   return <span className={styles.tokenBadge}><span className={styles.tokenIcon}>
-    {isKton ? <Image src="/tokens/kton.png" alt="" width={28} height={28} /> : <Coins size={24} aria-hidden="true" />}
-    {wrapped && <small>{isKton ? "g" : "w"}</small>}
+    <Coins size={24} aria-hidden="true" />
+    {wrapped && <small>{"w"}</small>}
   </span>{symbol}</span>;
 }
