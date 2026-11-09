@@ -32,3 +32,5 @@ dist-ssr
 
 .env
 apps/indexer/indexer.yml
+
+.worktrees/
