@@ -14,3 +14,8 @@ export const tokenWrapperAbi = parseAbi([
   "function withdrawTo(address account, uint256 amount) returns (bool)",
   "function delegate(address delegatee)",
 ]);
+
+// Older ERC20 tokens (including mainnet KTON) expose bytes32 metadata.
+export const tokenSymbolBytes32Abi = parseAbi([
+  "function symbol() view returns (bytes32)",
+]);

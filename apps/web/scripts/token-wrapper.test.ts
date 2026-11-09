@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { zeroAddress } from "viem";
 
-import { confirmWrapperTransaction, getTokenWrapper, parseWrapperAmount, readWrapperValues, wrapperAction } from "../src/lib/token-wrapper.ts";
+import { createPublicClient, custom, decodeFunctionData, encodeAbiParameters, encodeFunctionResult, parseAbi, stringToHex, zeroAddress } from "viem";
+import { mainnet } from "viem/chains";
+
+import { confirmWrapperTransaction, getTokenWrapper, parseWrapperAmount, readWrapperValues, wrapperAction, wrapperReadContracts } from "../src/lib/token-wrapper.ts";
 
 import type { Config } from "../src/types/config.ts";
 import type { Hash } from "viem";
@@ -47,20 +49,24 @@ test("approval is needed only for wrap and only when allowance is insufficient",
 });
 
 const reads = [underlying, token, "KTON", "gKTON", 18, 18, 100n, 20n, 10n, zeroAddress, 70n];
+const successfulReads = (values: readonly unknown[]) => [
+  ...values.map((result) => ({ status: "success" as const, result })),
+  { status: "failure" as const }, { status: "failure" as const },
+];
 test("readback verifies both token relationships and decimals, preserving voting power independently of balance", () => {
   const wrapper = getTokenWrapper(config);
-  const values = readWrapperValues(reads, wrapper)!;
+  const values = readWrapperValues(successfulReads(reads), wrapper)!;
   assert.equal(values.votes, 70n);
   assert.equal(values.balance, 20n);
   for (const [position, value] of [[0, token], [1, governor], [5, 6], [7, undefined], [9, "bad"]] as const) {
     const changed = [...reads];
     changed[position] = value as string;
-    assert.equal(readWrapperValues(changed, wrapper), undefined);
+    assert.equal(readWrapperValues(successfulReads(changed), wrapper), undefined);
   }
 });
 
 test("wrapper metadata and both balances are independent of token names and support six decimals", () => {
-  const values = readWrapperValues([underlying, token, "ASSET", "vASSET", 6, 6, 1234567n, 7654321n, 0n, zeroAddress, 0n], getTokenWrapper(config))!;
+  const values = readWrapperValues(successfulReads([underlying, token, "ASSET", "vASSET", 6, 6, 1234567n, 7654321n, 0n, zeroAddress, 0n]), getTokenWrapper(config))!;
   assert.equal(values.underlyingSymbol, "ASSET");
   assert.equal(values.symbol, "vASSET");
   assert.equal(values.decimals, 6);
@@ -136,4 +142,75 @@ test("fee-only replacements update the transaction hash and can succeed", async 
   });
   assert.equal(result, nextHash);
   assert.deepEqual(submitted, [hash, nextHash]);
+});
+
+// Feed raw contract return bytes through viem and the same read list used by the
+// hook. Decoded string fixtures alone do not catch ERC20 metadata ABI mismatches.
+const aggregateAbi = parseAbi([
+  "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)",
+]);
+
+function metadataClient(symbols: readonly [`0x${string}`, `0x${string}`]) {
+  const wrapper = getTokenWrapper(config)!;
+  const contracts = wrapperReadContracts(wrapper, underlying);
+  return createPublicClient({
+    chain: mainnet,
+    transport: custom({
+      async request({ method, params }) {
+        assert.equal(method, "eth_call");
+        const [request] = params as [{ data: `0x${string}` }];
+        const decoded = decodeFunctionData({ abi: aggregateAbi, data: request.data });
+        const results = decoded.args[0].map((call) => {
+          const index = contracts.findIndex((contract) =>
+            contract.address.toLowerCase() === call.target.toLowerCase() &&
+            decodeFunctionData({ abi: contract.abi, data: call.callData }).functionName === contract.functionName);
+          assert.ok(index >= 0);
+          const contract = contracts[index];
+          const returnData = index === 2 ? symbols[0] : index === 3 ? symbols[1]
+            : encodeFunctionResult({ abi: contract.abi, functionName: contract.functionName, result: reads[index] });
+          return { success: true, returnData };
+        });
+        return encodeFunctionResult({ abi: aggregateAbi, functionName: "aggregate3", result: results });
+      },
+    }),
+  });
+}
+
+for (const underlyingLegacy of [false, true]) {
+  for (const wrappedLegacy of [false, true]) {
+    test(`raw metadata decodes with underlying bytes32=${underlyingLegacy}, wrapped bytes32=${wrappedLegacy}`, async () => {
+      const symbols = ["KTON", "gKTON"].map((symbol, index) =>
+        (index === 0 ? underlyingLegacy : wrappedLegacy)
+          ? stringToHex(symbol, { size: 32 })
+          : encodeAbiParameters([{ type: "string" }], [symbol])) as [`0x${string}`, `0x${string}`];
+      const wrapper = getTokenWrapper(config)!;
+      const results = await metadataClient(symbols).multicall({
+        contracts: wrapperReadContracts(wrapper, underlying), allowFailure: true, batchSize: 0,
+      });
+      const values = readWrapperValues(results, wrapper);
+      assert.ok(values);
+      assert.equal(values.underlyingSymbol, "KTON");
+      assert.equal(values.symbol, "gKTON");
+      assert.equal(values.underlyingBalance, 100n);
+      assert.equal(values.allowance, 10n);
+      if (underlyingLegacy) assert.equal(results[2].status, "failure");
+      if (wrappedLegacy) assert.equal(results[3].status, "failure");
+    });
+  }
+}
+
+test("metadata fallback never permits missing balances, allowances or contract validation", () => {
+  const wrapper = getTokenWrapper(config)!;
+  for (const index of [0, 1, 4, 5, 6, 7, 8, 9, 10]) {
+    const results = successfulReads(reads);
+    results[index] = { status: "failure" };
+    assert.equal(readWrapperValues(results, wrapper), undefined, `failed read ${index}`);
+  }
+  for (const index of [2, 3]) {
+    const results = successfulReads(reads);
+    results[index] = { status: "failure" };
+    assert.equal(readWrapperValues(results, wrapper), undefined);
+    results[index + 9] = { status: "success", result: "0x1234" };
+    assert.equal(readWrapperValues(results, wrapper), undefined);
+  }
 });

@@ -7,7 +7,7 @@ import { isAddress, zeroAddress } from "viem";
 import { useAccount, useConfig, usePublicClient, useReadContracts, useWriteContract } from "wagmi";
 
 import { tokenWrapperAbi as abi } from "@/config/abi/token-wrapper";
-import { confirmWrapperTransaction, getTokenWrapper, readWrapperValues } from "@/lib/token-wrapper";
+import { confirmWrapperTransaction, getTokenWrapper, readWrapperValues, wrapperReadContracts } from "@/lib/token-wrapper";
 import type { WrapperAction } from "@/lib/token-wrapper";
 import type { Config } from "@/types/config";
 
@@ -32,20 +32,10 @@ export function useTokenWrapper(dao: Config) {
   }, []);
 
   const reads = useReadContracts({
-    allowFailure: false,
-    contracts: wrapper && account ? [
-      { address: wrapper.address, abi, functionName: "underlying", chainId: wrapper.chainId },
-      { address: wrapper.governor, abi, functionName: "token", chainId: wrapper.chainId },
-      { address: wrapper.underlying, abi, functionName: "symbol", chainId: wrapper.chainId },
-      { address: wrapper.address, abi, functionName: "symbol", chainId: wrapper.chainId },
-      { address: wrapper.underlying, abi, functionName: "decimals", chainId: wrapper.chainId },
-      { address: wrapper.address, abi, functionName: "decimals", chainId: wrapper.chainId },
-      { address: wrapper.underlying, abi, functionName: "balanceOf", args: [account], chainId: wrapper.chainId },
-      { address: wrapper.address, abi, functionName: "balanceOf", args: [account], chainId: wrapper.chainId },
-      { address: wrapper.underlying, abi, functionName: "allowance", args: [account, wrapper.address], chainId: wrapper.chainId },
-      { address: wrapper.address, abi, functionName: "delegates", args: [account], chainId: wrapper.chainId },
-      { address: wrapper.address, abi, functionName: "getVotes", args: [account], chainId: wrapper.chainId },
-    ] : [],
+    // Metadata may use either ABI; readWrapperValues still requires every
+    // contract relationship, balance and allowance read to succeed.
+    allowFailure: true,
+    contracts: wrapper && account ? wrapperReadContracts(wrapper, account) : undefined,
     query: { enabled: Boolean(wrapper && account), refetchInterval: 15_000 },
   });
 
