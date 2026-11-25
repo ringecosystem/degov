@@ -3,7 +3,6 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import importPlugin from "eslint-plugin-import";
-import reactCompiler from "eslint-plugin-react-compiler";
 
 export default defineConfig([
   ...nextVitals,
@@ -12,11 +11,8 @@ export default defineConfig([
   {
     plugins: {
       import: importPlugin,
-      "react-compiler": reactCompiler,
     },
     rules: {
-      // Keep React Compiler rules enabled but start at warning level so we can fix incrementally
-      "react-compiler/react-compiler": "warn",
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/static-components": "warn",
       "react-hooks/refs": "warn",

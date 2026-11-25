@@ -112,14 +112,14 @@ export const proposalDraftDocumentSchema = z
     const ids = new Set(document.actions.map((action) => action.id));
     if (ids.size !== document.actions.length) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Draft action IDs must be unique",
         path: ["actions"],
       });
     }
     if (document.actions[0]?.type !== "proposal") {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Draft must start with a proposal action",
         path: ["actions", 0],
       });
@@ -129,7 +129,7 @@ export const proposalDraftDocumentSchema = z
       !ids.has(document.activeActionId)
     ) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Active action does not exist",
         path: ["activeActionId"],
       });
