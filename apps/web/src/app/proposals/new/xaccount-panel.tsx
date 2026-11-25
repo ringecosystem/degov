@@ -68,7 +68,7 @@ export const XAccountPanel = ({
           setValidationError(null);
           onChange(result.data);
         } else {
-          const errorMessages = result.error.errors.map(
+          const errorMessages = result.error.issues.map(
             (err) => `${err.path.join(".")} - ${err.message}`
           );
           const errorMessage = errorMessages.join("; ");

@@ -80,7 +80,7 @@ export const EmailBindForm = ({
   const [emailError, setEmailError] = useState<string>("");
   const [sendError, setSendError] = useState<string>("");
 
-  const emailSchema = z.string().email();
+  const emailSchema = z.email();
   const isEmailValid = emailSchema.safeParse(state.email).success;
 
   const sendingLoading = resendOTPMutation.isPending;

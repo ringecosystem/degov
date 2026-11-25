@@ -28,7 +28,6 @@ import { CallDataInputForm } from "./calldata-input-form";
 import { createCustomActionSchema } from "./schema";
 
 import type { CustomContent } from "./schema";
-import type { Address } from "viem";
 
 interface CustomPanelProps {
   visible: boolean;
@@ -60,7 +59,7 @@ export const CustomPanel = ({
     mode: "onChange",
     reValidateMode: "onChange",
     defaultValues: {
-      target: content?.target || ("" as Address),
+      target: content?.target || "",
       contractType: content?.contractType || "",
       contractMethod: content?.contractMethod || "",
       calldata: content?.calldata || [],
@@ -81,10 +80,11 @@ export const CustomPanel = ({
 
   const allFormValues = useWatch({ control });
 
+  const targetAddress = isAddress(watchedTarget) ? watchedTarget : undefined;
   const { data: bytecode, isFetching: isLoadingBytecode } = useBytecode({
-    address: watchedTarget,
+    address: targetAddress,
     query: {
-      enabled: !!watchedTarget && isAddress(watchedTarget || ""),
+      enabled: !!targetAddress,
     },
   });
 
@@ -283,7 +283,7 @@ export const CustomPanel = ({
           <AddressInputWithResolver
             id="target"
             value={watchedTarget}
-            onChange={(value) => setValue("target", value as Address)}
+            onChange={(value) => setValue("target", value)}
             placeholder={t("custom.placeholders.targetAddress")}
             className={cn(
               "border-border/20 bg-card",
@@ -297,7 +297,7 @@ export const CustomPanel = ({
             </span>
           ) : errors.target ? (
             <ErrorMessage message={errors.target.message} />
-          ) : watchedTarget && isAddress(watchedTarget || "") && !bytecode ? (
+          ) : targetAddress && !bytecode ? (
             <ErrorMessage message={t("custom.contractAddressError")} />
           ) : null}
         </div>

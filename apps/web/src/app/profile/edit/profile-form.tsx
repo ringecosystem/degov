@@ -104,7 +104,6 @@ const createFormSchema = (
       .trim(),
 
     email: z
-      .string()
       .email(t("validation.invalidEmail"))
       .trim()
       .toLowerCase()

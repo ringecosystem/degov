@@ -62,10 +62,10 @@ export const TransferPanel = ({
     formState: { errors },
     watch,
     setValue,
-  } = useForm<TransferContent>({
+  } = useForm({
     resolver: zodResolver(transferSchema),
     defaultValues: {
-      recipient: content?.recipient || ("" as Address),
+      recipient: content?.recipient || "",
       amount: content?.amount || "",
     },
     mode: "onChange",
